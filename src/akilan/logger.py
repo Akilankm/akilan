@@ -1,29 +1,19 @@
-from loguru import logger
-import sys
-from typing import Any
+import logging
 
 
-def setup_logger(level: str = "INFO"):
-    logger.remove()
+def get_logger(component: str, pdf_path: str) -> logging.Logger:
+    logger_name = f"akilan.{component}.{pdf_path}"
+    logger = logging.getLogger(logger_name)
 
-    logger.add(
-        sys.stdout,
-        level=level,
-        enqueue=False,
-        backtrace=True,
-        diagnose=False,
-        format=(
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>"
-        ),
-    )
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
 
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    logger.propagate = False
     return logger
-
-
-log = setup_logger()
-
-def get_logger(**context: Any):
-    return log.bind(**context)
