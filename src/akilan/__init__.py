@@ -1,13 +1,19 @@
+from .atoms import PdfAtomExtractor
 from .models import (
+    AtomDebug,
     BBox,
+    DynamicPosition,
     GroupChunk,
     ImageChunk,
+    NormalizedPosition,
+    NormalizedSize,
     PageChunk,
     PageChunks,
     TableChunk,
     TextChunk,
 )
 from .page_parser import PdfPageParser
+from .page_renderer import PdfPageRenderer
 from .views import (
     document_to_dict,
     get_all_chunks,
@@ -21,13 +27,19 @@ from .views import (
 
 __all__ = [
     "BBox",
+    "AtomDebug",
+    "NormalizedPosition",
+    "NormalizedSize",
+    "DynamicPosition",
     "TextChunk",
     "ImageChunk",
     "TableChunk",
     "GroupChunk",
     "PageChunk",
     "PageChunks",
+    "PdfAtomExtractor",
     "PdfPageParser",
+    "PdfPageRenderer",
     "get_all_chunks",
     "get_text_chunks",
     "get_image_chunks",

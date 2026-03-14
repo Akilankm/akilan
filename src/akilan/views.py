@@ -5,12 +5,10 @@ from .models import GroupChunk, ImageChunk, PageChunk, PageChunks, TableChunk, T
 
 def _walk_chunks(chunks: list[PageChunk]) -> list[PageChunk]:
     result: list[PageChunk] = []
-
     for chunk in chunks:
         result.append(chunk)
         if chunk.type == "group":
             result.extend(_walk_chunks(chunk.children))
-
     return result
 
 
@@ -34,10 +32,12 @@ def get_group_chunks(page: PageChunks) -> list[GroupChunk]:
     return [chunk for chunk in get_all_chunks(page) if chunk.type == "group"]
 
 
-def get_page_text(page: PageChunks, tagged: bool = False) -> str:
+def get_page_text(page: PageChunks, tagged: bool = False, raw: bool = False) -> str:
     text_chunks = get_text_chunks(page)
     if tagged:
         return "\n\n".join(chunk.content_tagged for chunk in text_chunks)
+    if raw:
+        return "\n\n".join(chunk.content_raw for chunk in text_chunks)
     return "\n\n".join(chunk.content for chunk in text_chunks)
 
 

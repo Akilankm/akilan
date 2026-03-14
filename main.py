@@ -1,14 +1,15 @@
 import json
 from pathlib import Path
 
-from akilan import PdfPageParser
+from akilan import PdfPageParser, PdfPageRenderer
 
 
 def main():
     pdf_path = "data/2024-wttc-introduction-to-ai.pdf"
-    page_number = 31
+    page_number = 18
 
     parser = PdfPageParser(pdf_path=pdf_path)
+    renderer = PdfPageRenderer(pdf_path=pdf_path)
 
     page = parser.parse_page(
         page_number=page_number,
@@ -21,12 +22,23 @@ def main():
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
 
-    output_file = output_dir / f"page_{page_number}.json"
-    with output_file.open("w", encoding="utf-8") as f:
+    json_path = output_dir / f"page_{page_number}.json"
+    overlay_path = output_dir / f"page_{page_number}_overlay.png"
+
+    with json_path.open("w", encoding="utf-8") as f:
         json.dump(page.to_dict(), f, indent=2, ensure_ascii=False)
 
-    print(f"Saved page {page_number} to {output_file}")
-    print(json.dumps(page.to_dict(), indent=2, ensure_ascii=False)[:7000])
+    renderer.render_page_with_bboxes(
+        page_data=page,
+        output_path=overlay_path,
+        zoom=2.0,
+        show_labels=True,
+        recurse_groups=True,
+    )
+
+    print(f"Saved JSON to {json_path}")
+    print(f"Saved overlay to {overlay_path}")
+    print(page.debug)
 
 
 if __name__ == "__main__":
