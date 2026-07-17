@@ -8,6 +8,7 @@ from statistics import median
 
 from .models import PageArtifact, TextBlock
 from .relationships import infer_document_relationships
+from .table_relationships import infer_table_continuations
 
 _LIST_PATTERN = re.compile(r"^\s*(?:[-•‣▪◦*]|\(?\d+[.)]|\(?[A-Za-z][.)])\s+")
 _PAGE_NUMBER_PATTERN = re.compile(r"^\s*(?:page\s*)?\d+(?:\s*(?:of|/)\s*\d+)?\s*$", re.IGNORECASE)
@@ -88,9 +89,10 @@ def mark_repeated_headers_and_footers(
     min_pages: int,
     min_fraction: float,
 ) -> None:
-    """Mark repeated margin content and finalize document-wide relationships."""
+    """Mark repeated margins and finalize document-wide relationships."""
 
     infer_document_relationships(pages)
+    infer_table_continuations(pages)
     if len(pages) < min_pages:
         return
     counts: Counter[str] = Counter()
