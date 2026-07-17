@@ -1,52 +1,74 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
 [project]
 name = "akilan"
-version = "0.0.3"
-description = "Adaptive Knowledge Ingestion Layer for Analytics Nodes – PyMuPDF wrapper for AI-ready document processing"
+version = "0.1.0"
+description = "Geometry-aware, AI-friendly PDF artifact construction using native PyMuPDF signals"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 license = { text = "MIT" }
-
-authors = [
-  { name = "Akilan"}
-]
-
-dependencies = [
-  "loguru>=0.7.3",
-  "pillow>=12.1.1",
-  "pymupdf>=1.27",
-  "rich>=14.3.3",
-]
-
+authors = [{ name = "Akilan" }]
+dependencies = ["pymupdf>=1.26.0,<2"]
 keywords = [
   "pdf",
   "pymupdf",
+  "document-ai",
+  "layout-analysis",
   "document-processing",
-  "ai",
-  "text-extraction"
+  "rag",
 ]
-
 classifiers = [
+  "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Topic :: Text Processing",
-  "Topic :: Scientific/Engineering :: Artificial Intelligence"
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "mypy>=1.18",
+  "pytest>=8.4",
+  "pytest-cov>=7.0",
+  "ruff>=0.12",
+]
+
+[project.scripts]
+akilan = "akilan.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
 Repository = "https://github.com/Akilankm/akilan"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+Issues = "https://github.com/Akilankm/akilan/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/akilan"]
 
-[dependency-groups]
-dev = [
-    "build>=1.4.0",
-    "twine>=6.2.0",
-]
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+packages = ["akilan"]
+warn_unused_ignores = false

@@ -1,51 +1,19 @@
-from .atoms import PdfAtomExtractor
-from .models import (
-    AtomDebug,
-    BBox,
-    DynamicPosition,
-    GroupChunk,
-    ImageChunk,
-    NormalizedPosition,
-    NormalizedSize,
-    PageChunk,
-    PageChunks,
-    TableChunk,
-    TextChunk,
-)
-from .page_parser import PdfPageParser
-from .page_renderer import PdfPageRenderer
-from .views import (
-    document_to_dict,
-    get_all_chunks,
-    get_group_chunks,
-    get_image_chunks,
-    get_page_text,
-    get_table_chunks,
-    get_text_chunks,
-    page_to_dict,
-)
+"""AKILAN: geometry-aware PDF artifact construction with PyMuPDF."""
+
+from .api import build_artifact
+from .config import ExtractionConfig
+from .extraction import PDFArtifactBuilder, PDFExtractionError
+from .geometry import BBox
+from .models import DocumentArtifact, PageArtifact
+from .version import __version__
 
 __all__ = [
     "BBox",
-    "AtomDebug",
-    "NormalizedPosition",
-    "NormalizedSize",
-    "DynamicPosition",
-    "TextChunk",
-    "ImageChunk",
-    "TableChunk",
-    "GroupChunk",
-    "PageChunk",
-    "PageChunks",
-    "PdfAtomExtractor",
-    "PdfPageParser",
-    "PdfPageRenderer",
-    "get_all_chunks",
-    "get_text_chunks",
-    "get_image_chunks",
-    "get_table_chunks",
-    "get_group_chunks",
-    "get_page_text",
-    "page_to_dict",
-    "document_to_dict",
+    "DocumentArtifact",
+    "ExtractionConfig",
+    "PDFArtifactBuilder",
+    "PDFExtractionError",
+    "PageArtifact",
+    "build_artifact",
+    "__version__",
 ]
