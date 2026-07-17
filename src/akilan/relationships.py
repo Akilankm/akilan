@@ -125,5 +125,6 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
                 _link_caption(page, block)
 
     for block in all_blocks:
-        for values in block.relationships.values():
-            values.sort()
+        for relationship in _OWNED_RELATIONSHIPS:
+            if relationship in block.relationships:
+                block.relationships[relationship].sort()
