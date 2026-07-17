@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Literal
 
 from .geometry import BBox
@@ -40,7 +41,7 @@ def _infer_column_boundaries(boxes: list[BBox], page_width: float) -> list[float
     minimum_gap = page_width * 0.04
     edges = sorted({coordinate for box in usable for coordinate in (box.x0, box.x1)})
     candidates: list[tuple[int, float, float]] = []
-    for left_edge, right_edge in zip(edges, edges[1:]):
+    for left_edge, right_edge in pairwise(edges):
         gap_width = right_edge - left_edge
         if gap_width < minimum_gap:
             continue
@@ -113,8 +114,8 @@ def analyze_layout(*, page_width: float, elements: Sequence[SpatialElement]) -> 
     return LayoutAnalysis(
         column_boundaries=tuple(round(boundary, 4) for boundary in boundaries),
         column_count=column_count,
-        spanning_element_ids=tuple(spanning),
-        ambiguous_element_ids=tuple(ambiguous),
+        spanning_element_ids=tuple(sorted(spanning)),
+        ambiguous_element_ids=tuple(sorted(ambiguous)),
         column_element_counts=tuple(counts),
     )
 
