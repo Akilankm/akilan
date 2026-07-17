@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pymupdf
 
-from akilan.benchmark import measure_artifact, run_corpus, write_corpus_report
+from akilan.benchmark import run_corpus, write_corpus_report
 from akilan.config import ExtractionConfig
 
 
