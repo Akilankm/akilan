@@ -28,6 +28,7 @@ def page_metrics(page: PageArtifact) -> dict[str, Any]:
         "annotation_count": len(page.annotations),
         "widget_count": len(page.widgets),
         "semantic_roles": dict(Counter(block.semantic_role for block in page.text_blocks)),
+        **page.metrics,
     }
 
 
