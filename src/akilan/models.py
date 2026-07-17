@@ -8,7 +8,6 @@ from typing import Any, Literal
 from .geometry import BBox
 from .serialization import to_jsonable
 
-
 SemanticRole = Literal[
     "document_title",
     "heading_1",

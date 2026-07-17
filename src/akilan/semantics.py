@@ -78,7 +78,7 @@ def assign_page_semantics(page: PageArtifact, header_ratio: float, footer_ratio:
 def normalize_margin_text(text: str) -> str:
     value = " ".join(text.casefold().split())
     value = re.sub(r"\b\d+\b", "#", value)
-    return value.strip(" |–—-•")
+    return value.strip(" |-•")
 
 
 def mark_repeated_headers_and_footers(

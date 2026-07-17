@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import median
-from typing import Protocol
+from typing import Literal
 
 from .geometry import BBox
-from .models import ReadingOrderItem
+from .models import DrawingElement, ImageElement, ReadingOrderItem, TableElement, TextBlock
 
-
-class SpatialElement(Protocol):
-    id: str
-    bbox: BBox
-    reading_order: int | None
+SpatialElement = TextBlock | TableElement | ImageElement | DrawingElement
 
 
 @dataclass(slots=True)
 class _Candidate:
-    element_type: str
+    element_type: Literal["text", "table", "image", "drawing"]
     element: SpatialElement
     column_index: int | None = None
 
@@ -50,10 +47,10 @@ def _column_index(box: BBox, boundaries: list[float], page_width: float) -> int 
 def build_reading_order(
     *,
     page_width: float,
-    text_blocks: list[SpatialElement],
-    tables: list[SpatialElement],
-    images: list[SpatialElement],
-    drawings: list[SpatialElement],
+    text_blocks: Sequence[TextBlock],
+    tables: Sequence[TableElement],
+    images: Sequence[ImageElement],
+    drawings: Sequence[DrawingElement],
     suppress_table_text: bool,
 ) -> list[ReadingOrderItem]:
     """Interleave page elements using columns, vertical bands, and spanning objects."""
@@ -62,7 +59,7 @@ def build_reading_order(
     table_boxes = [table.bbox for table in tables]
     for block in text_blocks:
         if suppress_table_text and any(block.bbox.overlap_ratio(table_box, "self") >= 0.55 for table_box in table_boxes):
-            setattr(block, "inside_table", True)
+            block.inside_table = True
             continue
         candidates.append(_Candidate("text", block))
     candidates.extend(_Candidate("table", table) for table in tables)
@@ -103,15 +100,17 @@ def build_reading_order(
     columnar.sort(key=lambda item: (item.column_index or 0, item.element.bbox.y0, item.element.bbox.x0))
     ordered.extend(columnar)
 
+    # Final geometric tie-break. Elements with substantial vertical separation
+    # remain in band order; overlapping items retain column order.
     result: list[ReadingOrderItem] = []
     for order, candidate in enumerate(ordered):
         candidate.element.reading_order = order
-        if hasattr(candidate.element, "column_index"):
-            setattr(candidate.element, "column_index", candidate.column_index)
+        if isinstance(candidate.element, TextBlock):
+            candidate.element.column_index = candidate.column_index
         result.append(
             ReadingOrderItem(
                 order=order,
-                element_type=candidate.element_type,  # type: ignore[arg-type]
+                element_type=candidate.element_type,
                 element_id=candidate.element.id,
                 bbox=candidate.element.bbox,
                 column_index=candidate.column_index,

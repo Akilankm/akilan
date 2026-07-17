@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import hypot
-from typing import Iterable, Sequence
 
 import pymupdf
 
@@ -19,7 +19,7 @@ class BBox:
     y1: float
 
     @classmethod
-    def from_value(cls, value: Sequence[float] | pymupdf.Rect) -> "BBox":
+    def from_value(cls, value: Sequence[float] | pymupdf.Rect) -> BBox:
         rect = pymupdf.Rect(value)
         return cls(float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1))
 
@@ -52,7 +52,7 @@ class BBox:
             "height": round(self.height, precision),
         }
 
-    def normalized(self, page: "BBox", precision: int = 6) -> dict[str, float]:
+    def normalized(self, page: BBox, precision: int = 6) -> dict[str, float]:
         width = page.width or 1.0
         height = page.height or 1.0
         return {
@@ -62,7 +62,7 @@ class BBox:
             "y1": round((self.y1 - page.y0) / height, precision),
         }
 
-    def intersects(self, other: "BBox") -> bool:
+    def intersects(self, other: BBox) -> bool:
         return not (
             self.x1 <= other.x0
             or other.x1 <= self.x0
@@ -70,7 +70,7 @@ class BBox:
             or other.y1 <= self.y0
         )
 
-    def intersection(self, other: "BBox") -> "BBox | None":
+    def intersection(self, other: BBox) -> BBox | None:
         if not self.intersects(other):
             return None
         return BBox(
@@ -80,7 +80,7 @@ class BBox:
             min(self.y1, other.y1),
         )
 
-    def overlap_ratio(self, other: "BBox", denominator: str = "self") -> float:
+    def overlap_ratio(self, other: BBox, denominator: str = "self") -> float:
         intersection = self.intersection(other)
         if intersection is None:
             return 0.0
@@ -96,7 +96,7 @@ class BBox:
             raise ValueError(f"Unsupported denominator: {denominator}")
         return intersection.area / base if base > 0 else 0.0
 
-    def contains(self, other: "BBox", tolerance: float = 0.0) -> bool:
+    def contains(self, other: BBox, tolerance: float = 0.0) -> bool:
         return (
             self.x0 - tolerance <= other.x0
             and self.y0 - tolerance <= other.y0
@@ -104,12 +104,12 @@ class BBox:
             and self.y1 + tolerance >= other.y1
         )
 
-    def distance_to(self, other: "BBox") -> float:
+    def distance_to(self, other: BBox) -> float:
         ax, ay = self.center
         bx, by = other.center
         return hypot(ax - bx, ay - by)
 
-    def expand(self, margin: float) -> "BBox":
+    def expand(self, margin: float) -> BBox:
         return BBox(self.x0 - margin, self.y0 - margin, self.x1 + margin, self.y1 + margin)
 
 

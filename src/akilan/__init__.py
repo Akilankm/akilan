@@ -14,6 +14,6 @@ __all__ = [
     "PDFArtifactBuilder",
     "PDFExtractionError",
     "PageArtifact",
-    "build_artifact",
     "__version__",
+    "build_artifact",
 ]
