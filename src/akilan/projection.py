@@ -19,6 +19,7 @@ def render_page(page: pymupdf.Page, target: Path, dpi: int) -> None:
 
 def page_metrics(page: PageArtifact) -> dict[str, Any]:
     return {
+        **page.metrics,
         "text_block_count": len(page.text_blocks),
         "text_character_count": sum(len(block.text) for block in page.text_blocks),
         "table_count": len(page.tables),
@@ -28,7 +29,6 @@ def page_metrics(page: PageArtifact) -> dict[str, Any]:
         "annotation_count": len(page.annotations),
         "widget_count": len(page.widgets),
         "semantic_roles": dict(Counter(block.semantic_role for block in page.text_blocks)),
-        **page.metrics,
     }
 
 
