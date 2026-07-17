@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from .builder import PDFArtifactBuilder
 from .config import ExtractionConfig
@@ -40,7 +40,7 @@ class CorpusCaseResult:
 
     source: str
     output_dir: str
-    status: str
+    status: Literal["passed", "failed"]
     elapsed_seconds: float
     metrics: ArtifactMetrics | None = None
     error_type: str | None = None
@@ -73,11 +73,7 @@ class CorpusReport:
 
 
 def artifact_fingerprint(artifact: DocumentArtifact) -> str:
-    """Return a canonical SHA-256 fingerprint of artifact content.
-
-    Volatile generator version text is retained intentionally: a changed engine or
-    package version should produce a different benchmark fingerprint.
-    """
+    """Return a canonical SHA-256 fingerprint of artifact content."""
 
     payload = json.dumps(
         artifact.to_dict(),
@@ -119,6 +115,11 @@ def measure_artifact(artifact: DocumentArtifact) -> ArtifactMetrics:
     )
 
 
+def _case_directory(source: Path) -> str:
+    identity = hashlib.sha256(str(source).encode("utf-8")).hexdigest()[:12]
+    return f"{source.stem}-{identity}"
+
+
 def run_corpus(
     pdf_paths: Iterable[str | Path],
     output_root: str | Path,
@@ -133,7 +134,7 @@ def run_corpus(
     cases: list[CorpusCaseResult] = []
 
     for source_value in sorted((Path(path).expanduser().resolve() for path in pdf_paths), key=str):
-        destination = root / source_value.stem
+        destination = root / _case_directory(source_value)
         started = perf_counter()
         try:
             artifact = PDFArtifactBuilder(effective_config).build(source_value, destination)
@@ -162,7 +163,7 @@ def run_corpus(
 
 
 def write_corpus_report(report: CorpusReport, destination: str | Path) -> Path:
-    """Persist a deterministic JSON report and return its resolved path."""
+    """Persist a machine-readable JSON report and return its resolved path."""
 
     path = Path(destination).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
