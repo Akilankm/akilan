@@ -159,13 +159,24 @@ def _validate_reading_order(page: Mapping[str, Any], path: str, violations: list
 
 
 def _validate_bbox(value: Any, path: str, violations: list[SchemaViolation]) -> None:
-    if not _is_sequence(value) or len(value) != 4:
-        violations.append(SchemaViolation(path, "must be an array of four numbers [x0, y0, x1, y1]"))
+    coordinates: list[Any]
+    if isinstance(value, Mapping):
+        required = ("x0", "y0", "x1", "y1")
+        missing = [key for key in required if key not in value]
+        if missing:
+            violations.append(SchemaViolation(path, f"is missing coordinate(s): {', '.join(missing)}"))
+            return
+        coordinates = [value[key] for key in required]
+    elif _is_sequence(value) and len(value) == 4:
+        coordinates = list(value)
+    else:
+        violations.append(SchemaViolation(path, "must be a bbox object or four-number array"))
         return
-    if any(not isinstance(item, (int, float)) or isinstance(item, bool) for item in value):
-        violations.append(SchemaViolation(path, "must contain only numbers"))
+
+    if any(not isinstance(item, (int, float)) or isinstance(item, bool) for item in coordinates):
+        violations.append(SchemaViolation(path, "must contain numeric x0, y0, x1, and y1 coordinates"))
         return
-    x0, y0, x1, y1 = value
+    x0, y0, x1, y1 = coordinates
     if x1 < x0 or y1 < y0:
         violations.append(SchemaViolation(path, "must satisfy x1 >= x0 and y1 >= y0"))
 
