@@ -4,13 +4,24 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from statistics import median
+from itertools import pairwise
 from typing import Literal
 
 from .geometry import BBox
 from .models import DrawingElement, ImageElement, ReadingOrderItem, TableElement, TextBlock
 
 SpatialElement = TextBlock | TableElement | ImageElement | DrawingElement
+
+
+@dataclass(frozen=True, slots=True)
+class LayoutAnalysis:
+    """Explainable page-layout evidence used by reading-order reconstruction."""
+
+    column_boundaries: tuple[float, ...]
+    column_count: int
+    spanning_element_ids: tuple[str, ...]
+    ambiguous_element_ids: tuple[str, ...]
+    column_element_counts: tuple[int, ...]
 
 
 @dataclass(slots=True)
@@ -21,27 +32,92 @@ class _Candidate:
 
 
 def _infer_column_boundaries(boxes: list[BBox], page_width: float) -> list[float]:
-    """Infer likely column separators from stable x-center gaps."""
+    """Infer separators from persistent vertical whitespace between page elements."""
 
     usable = [box for box in boxes if 0 < box.width < page_width * 0.72]
     if len(usable) < 4:
         return []
-    centers = sorted(box.center[0] for box in usable)
-    gaps = [(centers[index + 1] - centers[index], index) for index in range(len(centers) - 1)]
-    meaningful = [(gap, index) for gap, index in gaps if gap >= page_width * 0.12]
-    if not meaningful:
-        return []
-    typical_width = median(box.width for box in usable)
-    selected = sorted(meaningful, reverse=True)[:2]
-    boundaries = sorted((centers[index] + centers[index + 1]) / 2 for gap, index in selected if gap > typical_width * 0.45)
-    return boundaries
+
+    minimum_gap = page_width * 0.04
+    edges = sorted({coordinate for box in usable for coordinate in (box.x0, box.x1)})
+    candidates: list[tuple[int, float, float]] = []
+    for left_edge, right_edge in pairwise(edges):
+        gap_width = right_edge - left_edge
+        if gap_width < minimum_gap:
+            continue
+        boundary = (left_edge + right_edge) / 2.0
+        left_count = sum(box.x1 <= boundary for box in usable)
+        right_count = sum(box.x0 >= boundary for box in usable)
+        if left_count < 2 or right_count < 2:
+            continue
+        crossing_count = sum(box.x0 < boundary < box.x1 for box in usable)
+        candidates.append((crossing_count, -gap_width, boundary))
+
+    selected: list[float] = []
+    for _, _, boundary in sorted(candidates):
+        if all(abs(boundary - existing) >= page_width * 0.12 for existing in selected):
+            selected.append(boundary)
+        if len(selected) == 2:
+            break
+    return sorted(selected)
+
+
+def _boundary_clearance(page_width: float) -> float:
+    """Return the minimum evidence required on both sides of a separator."""
+
+    return max(12.0, page_width * 0.03)
+
+
+def _crosses_boundary(box: BBox, boundary: float, page_width: float) -> bool:
+    """Return whether a box materially spans both sides of a column separator."""
+
+    if not box.x0 < boundary < box.x1:
+        return False
+    clearance = _boundary_clearance(page_width)
+    return boundary - box.x0 >= clearance and box.x1 - boundary >= clearance
+
+
+def _near_boundary(box: BBox, boundary: float, page_width: float) -> bool:
+    """Flag weak separator evidence so downstream evaluation can inspect it."""
+
+    tolerance = _boundary_clearance(page_width)
+    return min(abs(box.x0 - boundary), abs(box.x1 - boundary), abs(box.center[0] - boundary)) <= tolerance
 
 
 def _column_index(box: BBox, boundaries: list[float], page_width: float) -> int | None:
     if not boundaries or box.width >= page_width * 0.72:
         return None
+    if any(_crosses_boundary(box, boundary, page_width) for boundary in boundaries):
+        return None
     center = box.center[0]
     return sum(center > boundary for boundary in boundaries)
+
+
+def analyze_layout(*, page_width: float, elements: Sequence[SpatialElement]) -> LayoutAnalysis:
+    """Return deterministic column, spanning, and ambiguity diagnostics."""
+
+    boundaries = _infer_column_boundaries([element.bbox for element in elements], page_width)
+    column_count = len(boundaries) + 1 if boundaries else 1
+    spanning: list[str] = []
+    ambiguous: list[str] = []
+    counts = [0] * column_count
+
+    for element in elements:
+        column_index = _column_index(element.bbox, boundaries, page_width)
+        if column_index is None:
+            spanning.append(element.id)
+        else:
+            counts[column_index] += 1
+            if any(_near_boundary(element.bbox, boundary, page_width) for boundary in boundaries):
+                ambiguous.append(element.id)
+
+    return LayoutAnalysis(
+        column_boundaries=tuple(round(boundary, 4) for boundary in boundaries),
+        column_count=column_count,
+        spanning_element_ids=tuple(sorted(spanning)),
+        ambiguous_element_ids=tuple(sorted(ambiguous)),
+        column_element_counts=tuple(counts),
+    )
 
 
 def build_reading_order(
@@ -100,8 +176,6 @@ def build_reading_order(
     columnar.sort(key=lambda item: (item.column_index or 0, item.element.bbox.y0, item.element.bbox.x0))
     ordered.extend(columnar)
 
-    # Final geometric tie-break. Elements with substantial vertical separation
-    # remain in band order; overlapping items retain column order.
     result: list[ReadingOrderItem] = []
     for order, candidate in enumerate(ordered):
         candidate.element.reading_order = order
