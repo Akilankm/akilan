@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 
 from .models import PageArtifact, TableElement
 
@@ -89,7 +90,7 @@ def infer_table_continuations(pages: list[PageArtifact]) -> list[TableContinuati
         page.metrics.pop("table_continuations", None)
 
     relationships: list[TableContinuation] = []
-    for left_page, right_page in zip(ordered_pages, ordered_pages[1:], strict=False):
+    for left_page, right_page in pairwise(ordered_pages):
         if right_page.page_index != left_page.page_index + 1:
             continue
         left_tables = sorted(left_page.tables, key=lambda table: (table.bbox.y0, table.bbox.x0, table.id))
