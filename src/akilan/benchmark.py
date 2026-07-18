@@ -164,6 +164,11 @@ def _performance_metrics(
     )
 
 
+def _memory_peak_delta(baseline_bytes: int) -> int:
+    _, peak_bytes = tracemalloc.get_traced_memory()
+    return max(0, peak_bytes - baseline_bytes)
+
+
 def run_corpus(
     pdf_paths: Iterable[str | Path],
     output_root: str | Path,
@@ -183,12 +188,13 @@ def run_corpus(
         owns_tracemalloc = not tracemalloc.is_tracing()
         if owns_tracemalloc:
             tracemalloc.start()
+            memory_baseline = 0
         else:
-            tracemalloc.reset_peak()
+            memory_baseline, _ = tracemalloc.get_traced_memory()
         try:
             artifact = PDFArtifactBuilder(effective_config).build(source_value, destination)
             elapsed = round(perf_counter() - started, 6)
-            _, peak_memory = tracemalloc.get_traced_memory()
+            peak_memory = _memory_peak_delta(memory_baseline)
             artifact_metrics = measure_artifact(artifact)
             cases.append(
                 CorpusCaseResult(
@@ -208,7 +214,7 @@ def run_corpus(
             )
         except Exception as exc:
             elapsed = round(perf_counter() - started, 6)
-            _, peak_memory = tracemalloc.get_traced_memory()
+            peak_memory = _memory_peak_delta(memory_baseline)
             cases.append(
                 CorpusCaseResult(
                     source=str(source_value),
