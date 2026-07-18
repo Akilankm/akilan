@@ -15,6 +15,7 @@ from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .models import DocumentArtifact, PageArtifact
 from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
+from .schema_resource import load_artifact_json_schema
 from .version import __version__
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "load_artifact_json_schema",
     "load_corpus_sources",
     "sync_corpus",
     "validate_artifact",
