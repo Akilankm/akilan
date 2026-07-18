@@ -61,11 +61,14 @@ def test_run_corpus_isolates_failures_and_writes_report(tmp_path: Path) -> None:
     assert report.failed == 1
     failed_case = next(case for case in report.cases if case.status == "failed")
     assert failed_case.error_type == "FileNotFoundError"
+    assert failed_case.performance is not None
+    assert failed_case.performance.pages_per_second == 0.0
 
     report_path = write_corpus_report(report, tmp_path / "reports" / "benchmark.json")
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["summary"] == {"failed": 1, "succeeded": 1, "total": 2}
     assert len(payload["cases"]) == 2
+    assert "performance" in payload["cases"][0]
 
 
 def test_measure_artifact_accepts_builder_output(tmp_path: Path) -> None:
@@ -77,3 +80,35 @@ def test_measure_artifact_accepts_builder_output(tmp_path: Path) -> None:
     assert artifact_metrics is not None
     assert artifact_metrics.source_sha256
     assert artifact_metrics.semantic_role_counts
+
+
+def test_run_corpus_records_actionable_performance_metrics(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "performance.pdf"
+    _write_pdf(pdf_path, "performance evidence")
+
+    case = run_corpus(
+        [pdf_path],
+        tmp_path / "artifacts",
+        config=ExtractionConfig(overwrite=True),
+    ).cases[0]
+
+    assert case.performance is not None
+    assert case.performance.source_size_bytes == pdf_path.stat().st_size
+    assert case.performance.output_size_bytes > 0
+    assert case.performance.peak_python_memory_bytes > 0
+    assert case.performance.pages_per_second > 0
+    assert case.performance.source_mib_per_second > 0
+    assert case.performance.output_to_source_ratio > 0
+
+
+def test_run_corpus_preserves_existing_tracemalloc_session(tmp_path: Path) -> None:
+    import tracemalloc
+
+    pdf_path = tmp_path / "tracing.pdf"
+    _write_pdf(pdf_path, "tracing")
+    tracemalloc.start()
+    try:
+        run_corpus([pdf_path], tmp_path / "artifacts", config=ExtractionConfig(overwrite=True))
+        assert tracemalloc.is_tracing()
+    finally:
+        tracemalloc.stop()
