@@ -1,4 +1,4 @@
-"""Reproducible acquisition of public PDF benchmark sources."""
+"""Reproducible acquisition and verification of public PDF benchmark sources."""
 
 from __future__ import annotations
 
@@ -39,6 +39,25 @@ class CorpusDownload:
     sha256: str
     size_bytes: int
     page_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CorpusVerification:
+    """Offline integrity result for one declared corpus source."""
+
+    source_id: str
+    path: Path
+    status: str
+    expected_sha256: str | None
+    actual_sha256: str | None
+    size_bytes: int | None
+    page_count: int | None
+    message: str | None = None
+
+    @property
+    def valid(self) -> bool:
+        """Return whether the declared local source is present and valid."""
+        return self.status == "valid"
 
 
 def load_corpus_sources(path: str | Path) -> tuple[CorpusSource, ...]:
@@ -92,6 +111,48 @@ def load_corpus_sources(path: str | Path) -> tuple[CorpusSource, ...]:
         sources.append(CorpusSource(source_id, url, filename, source_page, purpose, sha256))
 
     return tuple(sources)
+
+
+def verify_corpus(manifest_path: str | Path, data_dir: str | Path) -> tuple[CorpusVerification, ...]:
+    """Verify all declared local PDFs without performing network access.
+
+    Every source produces one deterministic result so callers can report the full
+    corpus state instead of losing evidence after the first invalid file.
+    """
+    destination_root = Path(data_dir)
+    results: list[CorpusVerification] = []
+    for source in load_corpus_sources(manifest_path):
+        path = destination_root / Path(source.filename)
+        if not path.is_file():
+            results.append(
+                CorpusVerification(source.source_id, path, "missing", source.sha256, None, None, None, "file is missing")
+            )
+            continue
+        try:
+            digest, size_bytes, page_count = _inspect_pdf(path)
+        except CorpusSourceError as exc:
+            results.append(
+                CorpusVerification(source.source_id, path, "invalid_pdf", source.sha256, None, None, None, str(exc))
+            )
+            continue
+        if source.sha256 is not None and digest != source.sha256:
+            results.append(
+                CorpusVerification(
+                    source.source_id,
+                    path,
+                    "checksum_mismatch",
+                    source.sha256,
+                    digest,
+                    size_bytes,
+                    page_count,
+                    "local checksum does not match manifest",
+                )
+            )
+            continue
+        results.append(
+            CorpusVerification(source.source_id, path, "valid", source.sha256, digest, size_bytes, page_count)
+        )
+    return tuple(results)
 
 
 def sync_corpus(
