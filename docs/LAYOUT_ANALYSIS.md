@@ -30,9 +30,18 @@ Ordering ties are resolved deterministically using column index, top coordinate,
 - inferred column count;
 - element IDs classified as spanning;
 - element IDs with weak separator assignments;
-- element counts assigned to each column.
+- element counts assigned to each column;
+- a bounded layout confidence score;
+- stable ambiguity reason identifiers.
 
-The diagnostics are intended for benchmark assertions and engineering review. Ambiguous elements are reported rather than silently presented as high-confidence structure.
+The confidence score starts at `1.0` and applies transparent penalties for weak separator assignments and strongly imbalanced populated columns. It is an engineering diagnostic, not a probability or an accuracy claim.
+
+Current ambiguity reasons are:
+
+- `elements_near_column_separator`;
+- `strong_column_population_imbalance`.
+
+The diagnostics are intended for benchmark assertions and engineering review. Ambiguous pages are reported rather than silently presented as high-confidence structure.
 
 ## Current limits
 
