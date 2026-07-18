@@ -22,8 +22,8 @@ class LayoutAnalysis:
     spanning_element_ids: tuple[str, ...]
     ambiguous_element_ids: tuple[str, ...]
     column_element_counts: tuple[int, ...]
-    confidence: float
-    ambiguity_reasons: tuple[str, ...]
+    confidence: float = 1.0
+    ambiguity_reasons: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
