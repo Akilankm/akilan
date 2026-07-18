@@ -3,6 +3,7 @@
 from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
+from .artifact_loader import load_artifact_directory
 from .config import ExtractionConfig
 from .corpus import (
     CorpusDownload,
@@ -36,6 +37,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
     "sync_corpus",
