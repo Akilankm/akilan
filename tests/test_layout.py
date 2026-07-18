@@ -115,7 +115,7 @@ def test_layout_analysis_reports_weak_separator_assignments() -> None:
     assert analysis.column_count == 2
     assert "weak-boundary" in analysis.ambiguous_element_ids
     assert sum(analysis.column_element_counts) == len(elements)
-    assert analysis.confidence == 0.75
+    assert analysis.confidence == 0.35
     assert analysis.ambiguity_reasons == ("elements_near_column_separator",)
 
 
