@@ -9,7 +9,7 @@ from typing import Any
 import fitz
 import pytest
 
-from akilan.corpus import CorpusSourceError, load_corpus_sources, sync_corpus
+from akilan.corpus import CorpusSourceError, load_corpus_sources, sync_corpus, verify_corpus
 
 
 def _pdf_bytes() -> bytes:
@@ -92,7 +92,6 @@ def test_sync_corpus_rejects_invalid_pdf_and_cleans_staging(tmp_path: Path, monk
 
     with pytest.raises(CorpusSourceError, match="invalid PDF"):
         sync_corpus(manifest, tmp_path / "data")
-
     assert not (tmp_path / "data" / "fixture.pdf").exists()
     assert not list((tmp_path / "data").glob(".fixture.pdf.*"))
 
@@ -122,3 +121,63 @@ def test_load_corpus_sources_rejects_unsafe_filename(tmp_path: Path) -> None:
 
     with pytest.raises(CorpusSourceError, match="safe relative"):
         load_corpus_sources(manifest)
+
+
+def test_verify_corpus_reports_valid_file_without_network(tmp_path: Path) -> None:
+    payload = _pdf_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    manifest = tmp_path / "sources.json"
+    _write_manifest(manifest, sha256=digest)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "fixture.pdf").write_bytes(payload)
+
+    result = verify_corpus(manifest, data_dir)
+
+    assert result[0].valid
+    assert result[0].status == "valid"
+    assert result[0].actual_sha256 == digest
+    assert result[0].page_count == 1
+
+
+def test_verify_corpus_aggregates_missing_and_checksum_mismatch(tmp_path: Path) -> None:
+    payload = _pdf_bytes()
+    manifest = tmp_path / "sources.json"
+    source = {
+        "url": "https://example.test/fixture.pdf",
+        "source_page": "https://example.test/source",
+        "purpose": "fixture",
+    }
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "sources": [
+                    {**source, "id": "mismatch", "filename": "mismatch.pdf", "sha256": "0" * 64},
+                    {**source, "id": "missing", "filename": "missing.pdf", "sha256": "1" * 64},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "mismatch.pdf").write_bytes(payload)
+
+    result = verify_corpus(manifest, data_dir)
+
+    assert [item.status for item in result] == ["checksum_mismatch", "missing"]
+    assert not any(item.valid for item in result)
+
+
+def test_verify_corpus_reports_invalid_pdf_without_raising(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.json"
+    _write_manifest(manifest)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "fixture.pdf").write_bytes(b"not a pdf")
+
+    result = verify_corpus(manifest, data_dir)
+
+    assert result[0].status == "invalid_pdf"
+    assert result[0].message is not None
