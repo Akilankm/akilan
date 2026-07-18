@@ -10,6 +10,7 @@ from akilan.config import ExtractionConfig
 
 
 def _write_pdf(path: Path, text: str) -> None:
+    path.unlink(missing_ok=True)
     document = pymupdf.open()
     page = document.new_page(width=300, height=200)
     page.insert_text((30, 40), text)
@@ -99,6 +100,7 @@ def test_run_corpus_records_actionable_performance_metrics(tmp_path: Path) -> No
     assert case.performance.pages_per_second > 0
     assert case.performance.source_mib_per_second > 0
     assert case.performance.output_to_source_ratio > 0
+    assert case.performance.cache_hit is False
 
 
 def test_run_corpus_preserves_existing_tracemalloc_session(tmp_path: Path) -> None:
@@ -112,3 +114,84 @@ def test_run_corpus_preserves_existing_tracemalloc_session(tmp_path: Path) -> No
         assert tracemalloc.is_tracing()
     finally:
         tracemalloc.stop()
+
+
+def test_run_corpus_reuses_matching_completed_artifact(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "cached.pdf"
+    output_root = tmp_path / "artifacts"
+    _write_pdf(pdf_path, "cache me")
+
+    first = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+    second = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+
+    assert first.performance is not None
+    assert second.performance is not None
+    assert first.performance.cache_hit is False
+    assert second.performance.cache_hit is True
+    assert second.performance.peak_python_memory_bytes == 0
+    assert second.metrics == first.metrics
+    assert (Path(second.output_dir) / ".akilan-benchmark-cache.json").is_file()
+
+
+def test_run_corpus_invalidates_cache_when_source_changes(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "changed.pdf"
+    output_root = tmp_path / "artifacts"
+    _write_pdf(pdf_path, "first content")
+    first = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+
+    _write_pdf(pdf_path, "replacement content")
+    second = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+
+    assert first.metrics is not None
+    assert second.metrics is not None
+    assert second.performance is not None
+    assert second.performance.cache_hit is False
+    assert second.metrics.source_sha256 != first.metrics.source_sha256
+
+
+def test_run_corpus_invalidates_cache_when_configuration_changes(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "configuration.pdf"
+    output_root = tmp_path / "artifacts"
+    _write_pdf(pdf_path, "configuration")
+    run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True, include_plain_text=True))
+
+    second = run_corpus(
+        [pdf_path],
+        output_root,
+        config=ExtractionConfig(overwrite=True, include_plain_text=False),
+    ).cases[0]
+
+    assert second.performance is not None
+    assert second.performance.cache_hit is False
+
+
+def test_run_corpus_ignores_corrupt_cache_marker(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "corrupt.pdf"
+    output_root = tmp_path / "artifacts"
+    _write_pdf(pdf_path, "corrupt cache")
+    first = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+    marker = Path(first.output_dir) / ".akilan-benchmark-cache.json"
+    marker.write_text("not-json", encoding="utf-8")
+
+    second = run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True)).cases[0]
+
+    assert second.performance is not None
+    assert second.performance.cache_hit is False
+    assert second.status == "passed"
+
+
+def test_run_corpus_can_force_rebuild(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "forced.pdf"
+    output_root = tmp_path / "artifacts"
+    _write_pdf(pdf_path, "force rebuild")
+    run_corpus([pdf_path], output_root, config=ExtractionConfig(overwrite=True))
+
+    second = run_corpus(
+        [pdf_path],
+        output_root,
+        config=ExtractionConfig(overwrite=True),
+        use_cache=False,
+    ).cases[0]
+
+    assert second.performance is not None
+    assert second.performance.cache_hit is False

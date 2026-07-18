@@ -6,7 +6,8 @@ import hashlib
 import json
 import tracemalloc
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal
@@ -17,6 +18,8 @@ from .models import DocumentArtifact
 from .serialization import to_jsonable
 
 _MIB = 1024 * 1024
+_CACHE_FILENAME = ".akilan-benchmark-cache.json"
+_CACHE_FORMAT_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,7 @@ class PerformanceMetrics:
     pages_per_second: float
     source_mib_per_second: float
     output_to_source_ratio: float
+    cache_hit: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +154,7 @@ def _performance_metrics(
     elapsed_seconds: float,
     peak_python_memory_bytes: int,
     page_count: int,
+    cache_hit: bool = False,
 ) -> PerformanceMetrics:
     source_size = source.stat().st_size if source.is_file() else 0
     output_size = _directory_size(destination)
@@ -161,6 +166,7 @@ def _performance_metrics(
         pages_per_second=round(page_count / safe_elapsed, 6),
         source_mib_per_second=round((source_size / _MIB) / safe_elapsed, 6),
         output_to_source_ratio=round(output_size / source_size, 6) if source_size else 0.0,
+        cache_hit=cache_hit,
     )
 
 
@@ -169,13 +175,71 @@ def _memory_peak_delta(baseline_bytes: int) -> int:
     return max(0, peak_bytes - baseline_bytes)
 
 
+def _source_sha256(source: Path) -> str:
+    digest = hashlib.sha256()
+    with source.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _package_version() -> str:
+    try:
+        return version("akilan")
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
+def _cache_identity(source: Path, config: ExtractionConfig) -> str:
+    payload = {
+        "cache_format_version": _CACHE_FORMAT_VERSION,
+        "package_version": _package_version(),
+        "source_sha256": _source_sha256(source),
+        "config": asdict(config),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _read_cached_metrics(destination: Path, identity: str) -> ArtifactMetrics | None:
+    marker = destination / _CACHE_FILENAME
+    if not marker.is_file():
+        return None
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+        if payload.get("identity") != identity or payload.get("cache_format_version") != _CACHE_FORMAT_VERSION:
+            return None
+        metrics = payload["metrics"]
+        return ArtifactMetrics(**metrics)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _write_cache_marker(destination: Path, identity: str, metrics: ArtifactMetrics) -> None:
+    marker = destination / _CACHE_FILENAME
+    payload = {
+        "cache_format_version": _CACHE_FORMAT_VERSION,
+        "identity": identity,
+        "metrics": asdict(metrics),
+    }
+    temporary = marker.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(marker)
+
+
 def run_corpus(
     pdf_paths: Iterable[str | Path],
     output_root: str | Path,
     *,
     config: ExtractionConfig | None = None,
+    use_cache: bool = True,
 ) -> CorpusReport:
-    """Extract a corpus independently and return auditable per-file outcomes."""
+    """Extract a corpus independently and return auditable per-file outcomes.
+
+    Successful cases are reused only when the source bytes, complete extraction
+    configuration, installed package version, and cache format all match.
+    Corrupt or stale cache markers are ignored and rebuilt safely.
+    """
 
     root = Path(output_root).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -185,6 +249,32 @@ def run_corpus(
     for source_value in sorted((Path(path).expanduser().resolve() for path in pdf_paths), key=str):
         destination = root / _case_directory(source_value)
         started = perf_counter()
+        try:
+            identity = _cache_identity(source_value, effective_config)
+            cached_metrics = _read_cached_metrics(destination, identity) if use_cache else None
+            if cached_metrics is not None:
+                elapsed = round(perf_counter() - started, 6)
+                cases.append(
+                    CorpusCaseResult(
+                        source=str(source_value),
+                        output_dir=str(destination),
+                        status="passed",
+                        elapsed_seconds=elapsed,
+                        metrics=cached_metrics,
+                        performance=_performance_metrics(
+                            source=source_value,
+                            destination=destination,
+                            elapsed_seconds=elapsed,
+                            peak_python_memory_bytes=0,
+                            page_count=cached_metrics.page_count,
+                            cache_hit=True,
+                        ),
+                    )
+                )
+                continue
+        except (OSError, ValueError):
+            identity = ""
+
         owns_tracemalloc = not tracemalloc.is_tracing()
         if owns_tracemalloc:
             tracemalloc.start()
@@ -196,6 +286,8 @@ def run_corpus(
             elapsed = round(perf_counter() - started, 6)
             peak_memory = _memory_peak_delta(memory_baseline)
             artifact_metrics = measure_artifact(artifact)
+            if use_cache and identity:
+                _write_cache_marker(destination, identity, artifact_metrics)
             cases.append(
                 CorpusCaseResult(
                     source=str(source_value),
