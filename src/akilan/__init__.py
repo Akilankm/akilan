@@ -2,7 +2,15 @@
 
 from .api import build_artifact
 from .config import ExtractionConfig
-from .corpus import CorpusDownload, CorpusSource, CorpusSourceError, load_corpus_sources, sync_corpus
+from .corpus import (
+    CorpusDownload,
+    CorpusSource,
+    CorpusSourceError,
+    CorpusVerification,
+    load_corpus_sources,
+    sync_corpus,
+    verify_corpus,
+)
 from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .models import DocumentArtifact, PageArtifact
@@ -15,6 +23,7 @@ __all__ = [
     "CorpusDownload",
     "CorpusSource",
     "CorpusSourceError",
+    "CorpusVerification",
     "DocumentArtifact",
     "ExtractionConfig",
     "PDFArtifactBuilder",
@@ -26,4 +35,5 @@ __all__ = [
     "load_corpus_sources",
     "sync_corpus",
     "validate_artifact",
+    "verify_corpus",
 ]
