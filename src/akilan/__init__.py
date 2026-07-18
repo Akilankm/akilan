@@ -14,6 +14,7 @@ from .corpus import (
 )
 from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
+from .manifest_schema import validate_manifest
 from .models import DocumentArtifact, PageArtifact
 from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
 from .schema_resource import load_artifact_json_schema
@@ -38,6 +39,7 @@ __all__ = [
     "load_corpus_sources",
     "sync_corpus",
     "validate_artifact",
+    "validate_manifest",
     "validate_page_identities",
     "verify_corpus",
 ]
