@@ -120,6 +120,24 @@ def analyze_layout(*, page_width: float, elements: Sequence[SpatialElement]) -> 
     )
 
 
+def _vertical_center(candidate: _Candidate) -> float:
+    """Return a stable vertical anchor for mixed-layout band partitioning."""
+
+    return candidate.element.bbox.center[1]
+
+
+def _column_sort_key(candidate: _Candidate) -> tuple[int, float, float, str]:
+    """Return a deterministic order key within one vertical layout band."""
+
+    assert candidate.column_index is not None
+    return (
+        candidate.column_index,
+        candidate.element.bbox.y0,
+        candidate.element.bbox.x0,
+        candidate.element.id,
+    )
+
+
 def build_reading_order(
     *,
     page_width: float,
@@ -155,25 +173,27 @@ def build_reading_order(
 
     spanning = sorted(
         [candidate for candidate in candidates if candidate.column_index is None],
-        key=lambda item: (item.element.bbox.y0, item.element.bbox.x0),
+        key=lambda item: (
+            _vertical_center(item),
+            item.element.bbox.y0,
+            item.element.bbox.x0,
+            item.element.id,
+        ),
     )
     columnar = [candidate for candidate in candidates if candidate.column_index is not None]
 
     ordered: list[_Candidate] = []
-    cursor_y = float("-inf")
     for span in spanning:
-        before = [
-            item
-            for item in columnar
-            if cursor_y <= item.element.bbox.y0 < span.element.bbox.y0
-        ]
-        before.sort(key=lambda item: (item.column_index or 0, item.element.bbox.y0, item.element.bbox.x0))
+        span_center = _vertical_center(span)
+        before = [item for item in columnar if _vertical_center(item) < span_center]
+        before.sort(key=_column_sort_key)
         ordered.extend(before)
-        columnar = [item for item in columnar if item not in before]
+        if before:
+            consumed = {id(item) for item in before}
+            columnar = [item for item in columnar if id(item) not in consumed]
         ordered.append(span)
-        cursor_y = max(cursor_y, span.element.bbox.y1)
 
-    columnar.sort(key=lambda item: (item.column_index or 0, item.element.bbox.y0, item.element.bbox.x0))
+    columnar.sort(key=_column_sort_key)
     ordered.extend(columnar)
 
     result: list[ReadingOrderItem] = []

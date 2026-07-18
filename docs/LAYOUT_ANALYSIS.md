@@ -18,7 +18,9 @@ This edge-based method avoids a failure mode in center-gap clustering where a ce
 
 An element is treated as spanning when it is wide relative to the page or materially crosses an inferred separator. Material crossing requires geometry on both sides of the separator, which prevents minor bounding-box noise from changing the reading order.
 
-Spanning elements split the page into vertical bands. Column content above a span is emitted column by column, followed by the span, then the next band.
+Spanning elements split the page into vertical bands. AKILAN partitions column content by each element's vertical center, emits the completed column band column by column, and then emits the spanning element. Center-based partitioning is deliberate: a column element whose bounding box overlaps a full-width title, callout, figure, or table is assigned to the nearest defensible band instead of being stranded and appended after a later span.
+
+Ordering ties are resolved deterministically using column index, top coordinate, left coordinate, and stable element ID. Reversing the input element sequence therefore does not change the reconstructed order.
 
 ## Diagnostics
 
