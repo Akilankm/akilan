@@ -35,15 +35,19 @@ def _write_manifest(path: Path, *, sha256: str | None = None, filename: str = "f
 
 
 class _Response(io.BytesIO):
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, *, final_url: str = "https://example.test/fixture.pdf") -> None:
         super().__init__(payload)
         self.headers = {"Content-Length": str(len(payload))}
+        self.final_url = final_url
 
     def __enter__(self) -> _Response:
         return self
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
+    def geturl(self) -> str:
+        return self.final_url
 
 
 def test_sync_corpus_downloads_valid_pdf_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,6 +104,16 @@ def test_sync_corpus_enforces_streaming_size_limit(tmp_path: Path, monkeypatch: 
 
     with pytest.raises(CorpusSourceError, match="exceeds"):
         sync_corpus(manifest, tmp_path / "data", max_bytes=10)
+
+
+def test_sync_corpus_rejects_non_https_redirect(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    manifest = tmp_path / "sources.json"
+    _write_manifest(manifest)
+    response = _Response(_pdf_bytes(), final_url="http://example.test/fixture.pdf")
+    monkeypatch.setattr("akilan.corpus.urlopen", lambda *_args, **_kwargs: response)
+
+    with pytest.raises(CorpusSourceError, match="non-HTTPS"):
+        sync_corpus(manifest, tmp_path / "data")
 
 
 def test_load_corpus_sources_rejects_unsafe_filename(tmp_path: Path) -> None:
