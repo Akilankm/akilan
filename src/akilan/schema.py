@@ -13,6 +13,13 @@ from typing import Any
 
 SUPPORTED_SCHEMA_MAJOR = 1
 
+_ELEMENT_COLLECTIONS = {
+    "text_blocks": "text",
+    "tables": "table",
+    "images": "image",
+    "drawings": "drawing",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class SchemaViolation:
@@ -127,6 +134,7 @@ def _validate_page(value: Any, path: str, violations: list[SchemaViolation]) -> 
         _require_mapping(metrics, f"{path}.metrics", violations)
 
     _validate_reading_order(value, path, violations)
+    _validate_element_references(value, path, violations)
 
 
 def _validate_reading_order(page: Mapping[str, Any], path: str, violations: list[SchemaViolation]) -> None:
@@ -156,6 +164,62 @@ def _validate_reading_order(page: Mapping[str, Any], path: str, violations: list
         bbox = _required(item, "bbox", item_path, violations)
         if bbox is not None:
             _validate_bbox(bbox, f"{item_path}.bbox", violations)
+
+
+def _validate_element_references(page: Mapping[str, Any], path: str, violations: list[SchemaViolation]) -> None:
+    """Validate stable page element IDs and reading-order graph integrity."""
+
+    elements: dict[str, tuple[str, str]] = {}
+    for collection, element_type in _ELEMENT_COLLECTIONS.items():
+        items = page.get(collection)
+        if not _is_sequence(items):
+            continue
+        for index, item in enumerate(items):
+            item_path = f"{path}.{collection}[{index}]"
+            if not _require_mapping(item, item_path, violations):
+                continue
+            element_id = _required(item, "id", item_path, violations)
+            if element_id is None:
+                continue
+            if not isinstance(element_id, str) or not element_id:
+                violations.append(SchemaViolation(f"{item_path}.id", "must be a non-empty string"))
+                continue
+            existing = elements.get(element_id)
+            if existing is not None:
+                violations.append(
+                    SchemaViolation(
+                        f"{item_path}.id",
+                        f"duplicates element ID {element_id!r} first declared at {existing[1]}",
+                    )
+                )
+                continue
+            elements[element_id] = (element_type, item_path)
+
+    reading_order = page.get("reading_order")
+    if not _is_sequence(reading_order):
+        return
+    for index, item in enumerate(reading_order):
+        if not isinstance(item, Mapping):
+            continue
+        item_path = f"{path}.reading_order[{index}]"
+        element_id = item.get("element_id")
+        element_type = item.get("element_type")
+        if not isinstance(element_id, str) or not element_id:
+            continue
+        target = elements.get(element_id)
+        if target is None:
+            violations.append(
+                SchemaViolation(f"{item_path}.element_id", f"references unknown page element {element_id!r}")
+            )
+            continue
+        actual_type = target[0]
+        if element_type in _ELEMENT_COLLECTIONS.values() and element_type != actual_type:
+            violations.append(
+                SchemaViolation(
+                    f"{item_path}.element_type",
+                    f"declares {element_type!r} but {element_id!r} is a {actual_type!r} element",
+                )
+            )
 
 
 def _validate_bbox(value: Any, path: str, violations: list[SchemaViolation]) -> None:

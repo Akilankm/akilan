@@ -24,7 +24,7 @@ def valid_artifact() -> dict[str, object]:
                 "rotation": 0,
                 "mediabox": bbox,
                 "cropbox": bbox,
-                "text_blocks": [],
+                "text_blocks": [{"id": "p0001-text-0001"}],
                 "tables": [],
                 "images": [],
                 "drawings": [],
@@ -82,3 +82,54 @@ def test_validator_raises_one_error_with_all_violations() -> None:
     assert len(error.value.violations) == 2
     assert "$.statistics: is required" in str(error.value)
     assert "$.pages[0].cropbox: must satisfy x1 >= x0" in str(error.value)
+
+
+def test_validator_rejects_duplicate_page_element_ids() -> None:
+    artifact = valid_artifact()
+    page = artifact["pages"][0]  # type: ignore[index]
+    page["tables"] = [{"id": "p0001-text-0001"}]  # type: ignore[index]
+
+    violations = validate_artifact(artifact, raise_on_error=False)
+
+    assert str(violations[-1]) == (
+        "$.pages[0].tables[0].id: duplicates element ID 'p0001-text-0001' "
+        "first declared at $.pages[0].text_blocks[0]"
+    )
+
+
+def test_validator_rejects_dangling_reading_order_reference() -> None:
+    artifact = valid_artifact()
+    page = artifact["pages"][0]  # type: ignore[index]
+    page["reading_order"][0]["element_id"] = "p0001-text-9999"  # type: ignore[index]
+
+    violations = validate_artifact(artifact, raise_on_error=False)
+
+    assert str(violations[-1]) == (
+        "$.pages[0].reading_order[0].element_id: references unknown page element 'p0001-text-9999'"
+    )
+
+
+def test_validator_rejects_reading_order_type_mismatch() -> None:
+    artifact = valid_artifact()
+    page = artifact["pages"][0]  # type: ignore[index]
+    page["reading_order"][0]["element_type"] = "table"  # type: ignore[index]
+
+    violations = validate_artifact(artifact, raise_on_error=False)
+
+    assert str(violations[-1]) == (
+        "$.pages[0].reading_order[0].element_type: declares 'table' but "
+        "'p0001-text-0001' is a 'text' element"
+    )
+
+
+def test_validator_collects_malformed_element_entries() -> None:
+    artifact = valid_artifact()
+    page = artifact["pages"][0]  # type: ignore[index]
+    page["images"] = [None, {}, {"id": ""}]  # type: ignore[index]
+
+    violations = validate_artifact(artifact, raise_on_error=False)
+    rendered = {str(violation) for violation in violations}
+
+    assert "$.pages[0].images[0]: must be an object" in rendered
+    assert "$.pages[0].images[1].id: is required" in rendered
+    assert "$.pages[0].images[2].id: must be a non-empty string" in rendered
