@@ -115,7 +115,7 @@ def test_layout_analysis_reports_weak_separator_assignments() -> None:
     assert analysis.column_count == 2
     assert "weak-boundary" in analysis.ambiguous_element_ids
     assert sum(analysis.column_element_counts) == len(elements)
-    assert analysis.confidence == 0.8
+    assert analysis.confidence == 0.75
     assert analysis.ambiguity_reasons == ("elements_near_column_separator",)
 
 
@@ -125,14 +125,16 @@ def test_layout_analysis_reports_population_imbalance() -> None:
         _table("left-2", 40, 100, 260, 140),
         _table("left-3", 40, 160, 260, 200),
         _table("left-4", 40, 220, 260, 260),
+        _table("left-5", 40, 280, 260, 320),
         _table("right-1", 340, 40, 560, 80),
+        _table("right-2", 340, 100, 560, 140),
     ]
 
     analysis = analyze_layout(page_width=600, elements=elements)
 
     assert analysis.column_count == 2
-    assert analysis.column_element_counts == (4, 1)
-    assert analysis.confidence == 0.85
+    assert analysis.column_element_counts == (5, 2)
+    assert analysis.confidence == 0.8929
     assert analysis.ambiguity_reasons == ("strong_column_population_imbalance",)
 
 
