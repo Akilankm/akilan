@@ -115,6 +115,32 @@ def test_layout_analysis_reports_weak_separator_assignments() -> None:
     assert analysis.column_count == 2
     assert "weak-boundary" in analysis.ambiguous_element_ids
     assert sum(analysis.column_element_counts) == len(elements)
+    assert analysis.confidence == 0.8
+    assert analysis.ambiguity_reasons == ("elements_near_column_separator",)
+
+
+def test_layout_analysis_reports_population_imbalance() -> None:
+    elements = [
+        _table("left-1", 40, 40, 260, 80),
+        _table("left-2", 40, 100, 260, 140),
+        _table("left-3", 40, 160, 260, 200),
+        _table("left-4", 40, 220, 260, 260),
+        _table("right-1", 340, 40, 560, 80),
+    ]
+
+    analysis = analyze_layout(page_width=600, elements=elements)
+
+    assert analysis.column_count == 2
+    assert analysis.column_element_counts == (4, 1)
+    assert analysis.confidence == 0.85
+    assert analysis.ambiguity_reasons == ("strong_column_population_imbalance",)
+
+
+def test_empty_layout_has_complete_confidence() -> None:
+    analysis = analyze_layout(page_width=600, elements=[])
+
+    assert analysis.confidence == 1.0
+    assert analysis.ambiguity_reasons == ()
 
 
 def test_layout_analysis_is_deterministic_for_identical_geometry() -> None:
@@ -128,6 +154,4 @@ def test_layout_analysis_is_deterministic_for_identical_geometry() -> None:
     first = analyze_layout(page_width=600, elements=elements)
     second = analyze_layout(page_width=600, elements=list(reversed(elements)))
 
-    assert first.column_boundaries == second.column_boundaries
-    assert first.column_count == second.column_count
-    assert first.column_element_counts == second.column_element_counts
+    assert first == second
