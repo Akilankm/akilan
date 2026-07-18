@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from akilan import ExtractionConfig, PDFArtifactBuilder
 
@@ -79,9 +80,38 @@ def test_builder_protects_nonempty_output(tmp_path: Path) -> None:
     (output / "keep.txt").write_text("do not delete", encoding="utf-8")
 
     builder = PDFArtifactBuilder(ExtractionConfig(overwrite=False))
-    try:
+    with pytest.raises(FileExistsError):
         builder.build(pdf, output)
-    except FileExistsError:
-        pass
-    else:
-        raise AssertionError("Expected FileExistsError")
+
+
+def test_failed_overwrite_preserves_last_known_good_artifact(tmp_path: Path) -> None:
+    invalid_pdf = tmp_path / "invalid.pdf"
+    invalid_pdf.write_bytes(b"not a pdf")
+    output = tmp_path / "artifact"
+    output.mkdir()
+    marker = output / "known-good.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    builder = PDFArtifactBuilder(ExtractionConfig(overwrite=True))
+    with pytest.raises(Exception):
+        builder.build(invalid_pdf, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+    assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
+    assert not list(tmp_path.glob(".artifact.akilan-*.bak"))
+
+
+def test_successful_overwrite_replaces_previous_artifact_atomically(tmp_path: Path) -> None:
+    pdf = tmp_path / "sample.pdf"
+    output = tmp_path / "artifact"
+    _make_pdf(pdf)
+    output.mkdir()
+    stale = output / "stale.txt"
+    stale.write_text("old", encoding="utf-8")
+
+    PDFArtifactBuilder(ExtractionConfig(overwrite=True)).build(pdf, output)
+
+    assert not stale.exists()
+    assert (output / "manifest.json").is_file()
+    assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
+    assert not list(tmp_path.glob(".artifact.akilan-*.bak"))
