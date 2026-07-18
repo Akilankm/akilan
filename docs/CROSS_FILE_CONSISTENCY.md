@@ -8,7 +8,9 @@ AKILAN artifacts intentionally duplicate a small amount of indexing information 
 
 For a valid persisted artifact directory:
 
-- the manifest's `schema_version`, `generator`, `source`, `document`, `statistics`, and `artifact_files` fields exactly match `document.json`;
+- the manifest's `schema_version`, `generator`, `source`, `document`, and `statistics` fields exactly match `document.json`;
+- all artifact-file indexes except `document_json` exactly match the canonical document index;
+- `manifest.json` remains authoritative for locating a deliberately relocated canonical document file;
 - each manifest page index agrees with the corresponding canonical page for page number, label, JSON path, Markdown path, render path, and metrics;
 - the number of declared page JSON files agrees with the number of canonical pages;
 - every declared page path matches the corresponding canonical page's `json_path`;
