@@ -56,9 +56,42 @@ def test_infers_adjacent_page_continuation_with_repeated_header() -> None:
     assert relationship.source_table_id == first.id
     assert relationship.target_table_id == second.id
     assert relationship.repeated_header is True
+    assert relationship.header_similarity == 1.0
     assert relationship.confidence == 0.99
     assert pages[0].metrics["table_continuations"] == pages[1].metrics["table_continuations"]
-    assert page_metrics(pages[0])["table_continuations"][0]["rule_id"] == "adjacent-page-table-continuation-v1"
+    assert page_metrics(pages[0])["table_continuations"][0]["rule_id"] == (
+        "adjacent-page-table-continuation-v2"
+    )
+
+
+def test_recognizes_repeated_header_with_formatting_and_minor_wording_drift() -> None:
+    first = _table(
+        "first",
+        BBox(50.0, 620.0, 550.0, 790.0),
+        [["Product\nname", "Unit price (USD)"], ["A", "1"]],
+    )
+    second = _table(
+        "second",
+        BBox(51.0, 8.0, 549.0, 200.0),
+        [["Product name", "Unit price"], ["B", "2"]],
+    )
+
+    relationship = infer_table_continuations([_page(0, [first]), _page(1, [second])])[0]
+
+    assert relationship.repeated_header is True
+    assert relationship.header_similarity == 0.9
+    assert relationship.confidence > 0.97
+
+
+def test_does_not_treat_semantically_different_first_rows_as_repeated_headers() -> None:
+    first = _table("first", BBox(50.0, 620.0, 550.0, 790.0), [["Product", "Value"]])
+    second = _table("second", BBox(50.0, 5.0, 550.0, 190.0), [["Region", "Quarter"]])
+
+    relationship = infer_table_continuations([_page(0, [first]), _page(1, [second])])[0]
+
+    assert relationship.repeated_header is False
+    assert relationship.header_similarity == 0.0
+    assert relationship.confidence < 0.9
 
 
 def test_rejects_mismatched_columns_and_weak_alignment() -> None:
