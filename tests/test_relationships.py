@@ -13,6 +13,7 @@ def _block(
     *,
     x0: float = 50.0,
     x1: float = 500.0,
+    confidence: float = 1.0,
 ) -> TextBlock:
     return TextBlock(
         id=element_id,
@@ -21,7 +22,7 @@ def _block(
         lines=[],
         source_block_number=None,
         semantic_role=role,  # type: ignore[arg-type]
-        semantic_confidence=1.0,
+        semantic_confidence=confidence,
     )
 
 
@@ -70,6 +71,25 @@ def test_relationships_preserve_cross_page_section_context() -> None:
     assert nested_body.relationships["section_heading"] == ["subsection"]
     assert heading.relationships["contains"] == ["first-body", "second-body", "subsection"]
 
+    page_two_evidence = pages[1].metrics["relationship_evidence"]
+    assert {
+        "source_id": "second-body",
+        "target_id": "heading",
+        "relationship": "section_heading",
+        "rule_id": "active-section-membership-v1",
+        "confidence": 1.0,
+    } in page_two_evidence
+    page_one_contains = [
+        item
+        for item in pages[0].metrics["relationship_evidence"]
+        if item["source_id"] == "heading" and item["relationship"] == "contains"
+    ]
+    assert {item["target_id"] for item in page_one_contains} == {
+        "first-body",
+        "second-body",
+        "subsection",
+    }
+
 
 def test_caption_links_only_to_nearby_overlapping_visual() -> None:
     heading = _block("heading", "heading_1", 60, 90)
@@ -100,6 +120,31 @@ def test_caption_links_only_to_nearby_overlapping_visual() -> None:
 
     assert caption.relationships["describes"] == ["near-table"]
     assert caption.relationships["section_heading"] == ["heading"]
+    describes = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "describes"
+    )
+    assert describes["source_id"] == "caption"
+    assert describes["target_id"] == "near-table"
+    assert describes["rule_id"] == "caption-proximity-overlap-v1"
+    assert 0.55 <= describes["confidence"] <= 1.0
+
+
+def test_relationship_evidence_uses_bounded_semantic_confidence() -> None:
+    heading = _block("heading", "heading_1", 60, 90, confidence=0.95)
+    body = _block("body", "paragraph", 110, 160, confidence=0.72)
+    page = _page(0, [heading, body])
+
+    infer_document_relationships([page])
+
+    section_edge = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "section_heading"
+    )
+    assert section_edge["confidence"] == 0.72
+    assert section_edge["rule_id"] == "active-section-membership-v1"
 
 
 def test_relationship_inference_is_idempotent_and_preserves_external_edges() -> None:
@@ -107,11 +152,15 @@ def test_relationship_inference_is_idempotent_and_preserves_external_edges() -> 
     body = _block("body", "paragraph", 110, 160)
     body.relationships["external_reference"] = ["annotation-1"]
     page = _page(0, [heading, body])
+    page.metrics["external_metric"] = {"owner": "another-pass"}
 
     infer_document_relationships([page])
-    first = dict(body.relationships)
+    first_relationships = {key: list(values) for key, values in body.relationships.items()}
+    first_evidence = [dict(item) for item in page.metrics["relationship_evidence"]]
     infer_document_relationships([page])
 
-    assert body.relationships == first
+    assert body.relationships == first_relationships
+    assert page.metrics["relationship_evidence"] == first_evidence
+    assert page.metrics["external_metric"] == {"owner": "another-pass"}
     assert body.relationships["external_reference"] == ["annotation-1"]
     assert body.relationships["section_heading"] == ["heading"]
