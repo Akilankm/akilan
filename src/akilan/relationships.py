@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from .geometry import BBox
 from .models import PageArtifact, TextBlock
@@ -16,6 +17,11 @@ _HEADING_LEVELS = {
 }
 _CONTENT_ROLES = {"paragraph", "list_item", "caption", "code", "footnote"}
 _OWNED_RELATIONSHIPS = {"parent_heading", "section_heading", "contains", "describes"}
+_EVIDENCE_METRIC = "relationship_evidence"
+_RULE_PARENT_HEADING = "heading-stack-parent-v1"
+_RULE_SECTION_HEADING = "active-section-membership-v1"
+_RULE_CONTAINS = "direct-section-containment-v1"
+_RULE_CAPTION_DESCRIBES = "caption-proximity-overlap-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +29,24 @@ class _VisualCandidate:
     element_id: str
     bbox: BBox
     kind_rank: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RelationshipEvidence:
+    source_id: str
+    target_id: str
+    relationship: str
+    rule_id: str
+    confidence: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "relationship": self.relationship,
+            "rule_id": self.rule_id,
+            "confidence": round(max(0.0, min(1.0, self.confidence)), 4),
+        }
 
 
 def _ordered_text_blocks(page: PageArtifact) -> list[TextBlock]:
@@ -48,10 +72,36 @@ def _reset_owned_relationships(blocks: Iterable[TextBlock]) -> None:
             block.relationships.pop(relationship, None)
 
 
+def _reset_relationship_evidence(pages: Iterable[PageArtifact]) -> None:
+    for page in pages:
+        page.metrics.pop(_EVIDENCE_METRIC, None)
+
+
 def _append_relationship(block: TextBlock, name: str, element_id: str) -> None:
     values = block.relationships.setdefault(name, [])
     if element_id not in values:
         values.append(element_id)
+
+
+def _append_evidence(
+    evidence_by_page: dict[int, list[_RelationshipEvidence]],
+    page_index: int,
+    *,
+    source_id: str,
+    target_id: str,
+    relationship: str,
+    rule_id: str,
+    confidence: float,
+) -> None:
+    evidence = _RelationshipEvidence(
+        source_id=source_id,
+        target_id=target_id,
+        relationship=relationship,
+        rule_id=rule_id,
+        confidence=confidence,
+    )
+    if evidence not in evidence_by_page[page_index]:
+        evidence_by_page[page_index].append(evidence)
 
 
 def _horizontal_overlap_ratio(left: BBox, right: BBox) -> float:
@@ -74,36 +124,67 @@ def _visual_candidates(page: PageArtifact) -> list[_VisualCandidate]:
         *(_VisualCandidate(image.id, image.bbox, 1) for image in page.images),
         *(_VisualCandidate(drawing.id, drawing.bbox, 2) for drawing in page.drawings),
     ]
-    return sorted(candidates, key=lambda item: (item.kind_rank, item.bbox.y0, item.bbox.x0, item.element_id))
+    return sorted(
+        candidates,
+        key=lambda item: (item.kind_rank, item.bbox.y0, item.bbox.x0, item.element_id),
+    )
 
 
-def _link_caption(page: PageArtifact, caption: TextBlock) -> None:
+def _link_caption(
+    page: PageArtifact,
+    caption: TextBlock,
+    evidence_by_page: dict[int, list[_RelationshipEvidence]],
+) -> None:
     maximum_gap = max(24.0, page.height * 0.12)
-    ranked: list[tuple[float, float, int, str]] = []
+    ranked: list[tuple[float, float, int, str, float]] = []
     for candidate in _visual_candidates(page):
         gap = _vertical_gap(caption.bbox, candidate.bbox)
         overlap = _horizontal_overlap_ratio(caption.bbox, candidate.bbox)
         if gap > maximum_gap or overlap < 0.15:
             continue
-        ranked.append((gap, -overlap, candidate.kind_rank, candidate.element_id))
-    if ranked:
-        _append_relationship(caption, "describes", min(ranked)[3])
+        distance_score = 1.0 - min(1.0, gap / maximum_gap)
+        confidence = 0.55 + (0.25 * overlap) + (0.20 * distance_score)
+        ranked.append((gap, -overlap, candidate.kind_rank, candidate.element_id, confidence))
+    if not ranked:
+        return
+
+    _, _, _, target_id, confidence = min(ranked)
+    _append_relationship(caption, "describes", target_id)
+    _append_evidence(
+        evidence_by_page,
+        page.page_index,
+        source_id=caption.id,
+        target_id=target_id,
+        relationship="describes",
+        rule_id=_RULE_CAPTION_DESCRIBES,
+        confidence=confidence,
+    )
 
 
 def infer_document_relationships(pages: list[PageArtifact]) -> None:
-    """Populate auditable relationships without changing source evidence.
+    """Populate deterministic relationships and page-local audit evidence.
 
-    The function is deterministic and idempotent. Heading state intentionally spans
-    page boundaries, allowing body content on a new page to remain attached to the
-    most recent section heading. Ambiguous caption associations are resolved only
-    when a nearby visual element has meaningful horizontal overlap.
+    Existing relationship lists remain the compatibility projection. Each inferred
+    edge is additionally recorded under ``page.metrics.relationship_evidence`` with
+    a stable rule identifier and bounded confidence. Evidence is owned by this pass,
+    regenerated idempotently, and stored on the source element's page.
     """
 
-    all_blocks = [block for page in pages for block in page.text_blocks]
+    ordered_pages = sorted(pages, key=lambda item: (item.page_index, item.page_number))
+    all_blocks = [block for page in ordered_pages for block in page.text_blocks]
+    block_page = {
+        block.id: page.page_index
+        for page in ordered_pages
+        for block in page.text_blocks
+    }
+    evidence_by_page: dict[int, list[_RelationshipEvidence]] = {
+        page.page_index: [] for page in ordered_pages
+    }
     _reset_owned_relationships(all_blocks)
+    _reset_relationship_evidence(ordered_pages)
 
     heading_stack: list[tuple[int, TextBlock]] = []
-    for page in sorted(pages, key=lambda item: (item.page_index, item.page_number)):
+    for page in ordered_pages:
         for block in _ordered_text_blocks(page):
             level = _HEADING_LEVELS.get(block.semantic_role)
             if level is not None:
@@ -111,20 +192,71 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
                     heading_stack.pop()
                 if heading_stack:
                     parent = heading_stack[-1][1]
+                    confidence = min(block.semantic_confidence, parent.semantic_confidence)
                     _append_relationship(block, "parent_heading", parent.id)
                     _append_relationship(parent, "contains", block.id)
+                    _append_evidence(
+                        evidence_by_page,
+                        page.page_index,
+                        source_id=block.id,
+                        target_id=parent.id,
+                        relationship="parent_heading",
+                        rule_id=_RULE_PARENT_HEADING,
+                        confidence=confidence,
+                    )
+                    _append_evidence(
+                        evidence_by_page,
+                        block_page[parent.id],
+                        source_id=parent.id,
+                        target_id=block.id,
+                        relationship="contains",
+                        rule_id=_RULE_CONTAINS,
+                        confidence=confidence,
+                    )
                 heading_stack.append((level, block))
                 continue
 
             if block.semantic_role in _CONTENT_ROLES and heading_stack:
                 heading = heading_stack[-1][1]
+                confidence = min(block.semantic_confidence, heading.semantic_confidence)
                 _append_relationship(block, "section_heading", heading.id)
                 _append_relationship(heading, "contains", block.id)
+                _append_evidence(
+                    evidence_by_page,
+                    page.page_index,
+                    source_id=block.id,
+                    target_id=heading.id,
+                    relationship="section_heading",
+                    rule_id=_RULE_SECTION_HEADING,
+                    confidence=confidence,
+                )
+                _append_evidence(
+                    evidence_by_page,
+                    block_page[heading.id],
+                    source_id=heading.id,
+                    target_id=block.id,
+                    relationship="contains",
+                    rule_id=_RULE_CONTAINS,
+                    confidence=confidence,
+                )
 
             if block.semantic_role == "caption":
-                _link_caption(page, block)
+                _link_caption(page, block, evidence_by_page)
 
     for block in all_blocks:
         for relationship in _OWNED_RELATIONSHIPS:
             if relationship in block.relationships:
                 block.relationships[relationship].sort()
+
+    for page in ordered_pages:
+        evidence = sorted(
+            evidence_by_page[page.page_index],
+            key=lambda item: (
+                item.source_id,
+                item.relationship,
+                item.target_id,
+                item.rule_id,
+            ),
+        )
+        if evidence:
+            page.metrics[_EVIDENCE_METRIC] = [item.to_dict() for item in evidence]
