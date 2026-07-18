@@ -127,6 +127,9 @@ def _download_source(source: CorpusSource, destination: Path, timeout_seconds: f
     temp_path: Path | None = None
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
+            final_url = response.geturl()
+            if not final_url.startswith("https://"):
+                raise CorpusSourceError(f"{source.source_id}: download redirected to a non-HTTPS URL")
             declared_length = response.headers.get("Content-Length")
             if declared_length is not None and int(declared_length) > max_bytes:
                 raise CorpusSourceError(f"{source.source_id}: declared file size exceeds {max_bytes} bytes")
