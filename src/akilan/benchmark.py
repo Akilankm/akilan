@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tracemalloc
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,8 @@ from .builder import PDFArtifactBuilder
 from .config import ExtractionConfig
 from .models import DocumentArtifact
 from .serialization import to_jsonable
+
+_MIB = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +39,18 @@ class ArtifactMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class PerformanceMetrics:
+    """Process-local performance evidence for one extraction case."""
+
+    source_size_bytes: int
+    output_size_bytes: int
+    peak_python_memory_bytes: int
+    pages_per_second: float
+    source_mib_per_second: float
+    output_to_source_ratio: float
+
+
+@dataclass(frozen=True, slots=True)
 class CorpusCaseResult:
     """Outcome of extracting and measuring one corpus PDF."""
 
@@ -44,6 +59,7 @@ class CorpusCaseResult:
     status: Literal["passed", "failed"]
     elapsed_seconds: float
     metrics: ArtifactMetrics | None = None
+    performance: PerformanceMetrics | None = None
     error_type: str | None = None
     error_message: str | None = None
 
@@ -121,6 +137,38 @@ def _case_directory(source: Path) -> str:
     return f"{source.stem}-{identity}"
 
 
+def _directory_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(entry.stat().st_size for entry in path.rglob("*") if entry.is_file())
+
+
+def _performance_metrics(
+    *,
+    source: Path,
+    destination: Path,
+    elapsed_seconds: float,
+    peak_python_memory_bytes: int,
+    page_count: int,
+) -> PerformanceMetrics:
+    source_size = source.stat().st_size if source.is_file() else 0
+    output_size = _directory_size(destination)
+    safe_elapsed = max(elapsed_seconds, 1e-9)
+    return PerformanceMetrics(
+        source_size_bytes=source_size,
+        output_size_bytes=output_size,
+        peak_python_memory_bytes=peak_python_memory_bytes,
+        pages_per_second=round(page_count / safe_elapsed, 6),
+        source_mib_per_second=round((source_size / _MIB) / safe_elapsed, 6),
+        output_to_source_ratio=round(output_size / source_size, 6) if source_size else 0.0,
+    )
+
+
+def _memory_peak_delta(baseline_bytes: int) -> int:
+    _, peak_bytes = tracemalloc.get_traced_memory()
+    return max(0, peak_bytes - baseline_bytes)
+
+
 def run_corpus(
     pdf_paths: Iterable[str | Path],
     output_root: str | Path,
@@ -137,28 +185,56 @@ def run_corpus(
     for source_value in sorted((Path(path).expanduser().resolve() for path in pdf_paths), key=str):
         destination = root / _case_directory(source_value)
         started = perf_counter()
+        owns_tracemalloc = not tracemalloc.is_tracing()
+        if owns_tracemalloc:
+            tracemalloc.start()
+            memory_baseline = 0
+        else:
+            memory_baseline, _ = tracemalloc.get_traced_memory()
         try:
             artifact = PDFArtifactBuilder(effective_config).build(source_value, destination)
+            elapsed = round(perf_counter() - started, 6)
+            peak_memory = _memory_peak_delta(memory_baseline)
+            artifact_metrics = measure_artifact(artifact)
             cases.append(
                 CorpusCaseResult(
                     source=str(source_value),
                     output_dir=str(destination),
                     status="passed",
-                    elapsed_seconds=round(perf_counter() - started, 6),
-                    metrics=measure_artifact(artifact),
+                    elapsed_seconds=elapsed,
+                    metrics=artifact_metrics,
+                    performance=_performance_metrics(
+                        source=source_value,
+                        destination=destination,
+                        elapsed_seconds=elapsed,
+                        peak_python_memory_bytes=peak_memory,
+                        page_count=artifact_metrics.page_count,
+                    ),
                 )
             )
         except Exception as exc:
+            elapsed = round(perf_counter() - started, 6)
+            peak_memory = _memory_peak_delta(memory_baseline)
             cases.append(
                 CorpusCaseResult(
                     source=str(source_value),
                     output_dir=str(destination),
                     status="failed",
-                    elapsed_seconds=round(perf_counter() - started, 6),
+                    elapsed_seconds=elapsed,
+                    performance=_performance_metrics(
+                        source=source_value,
+                        destination=destination,
+                        elapsed_seconds=elapsed,
+                        peak_python_memory_bytes=peak_memory,
+                        page_count=0,
+                    ),
                     error_type=type(exc).__name__,
                     error_message=str(exc),
                 )
             )
+        finally:
+            if owns_tracemalloc:
+                tracemalloc.stop()
 
     return CorpusReport(cases=cases)
 
