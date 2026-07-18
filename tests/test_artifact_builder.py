@@ -6,7 +6,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from akilan import ExtractionConfig, PDFArtifactBuilder
+from akilan import ExtractionConfig, PDFArtifactBuilder, PDFExtractionError
 
 
 def _make_pdf(path: Path) -> None:
@@ -55,6 +55,8 @@ def test_builder_creates_complete_artifact(tmp_path: Path) -> None:
     assert artifact.statistics["text_block_count"] >= 6
     assert artifact.statistics["drawing_count"] > 0
     assert artifact.statistics["link_count"] == 1
+    assert artifact.document["extracted_page_numbers"] == [1, 2]
+    assert artifact.document["is_partial_extraction"] is False
     assert (output / "manifest.json").is_file()
     assert (output / "document.json").is_file()
     assert (output / "document.md").is_file()
@@ -70,6 +72,48 @@ def test_builder_creates_complete_artifact(tmp_path: Path) -> None:
     roles = {block["semantic_role"] for block in page["text_blocks"]}
     assert "document_title" in roles
     assert page["reading_order"]
+
+
+def test_builder_extracts_selected_pages_with_source_identity(tmp_path: Path) -> None:
+    pdf = tmp_path / "sample.pdf"
+    output = tmp_path / "artifact"
+    _make_pdf(pdf)
+
+    artifact = PDFArtifactBuilder(
+        ExtractionConfig(page_numbers=(2,), overwrite=True)
+    ).build(pdf, output)
+
+    assert [page.page_number for page in artifact.pages] == [2]
+    assert artifact.statistics["page_count"] == 1
+    assert artifact.document["page_count"] == 2
+    assert artifact.document["extracted_page_count"] == 1
+    assert artifact.document["extracted_page_numbers"] == [2]
+    assert artifact.document["is_partial_extraction"] is True
+    assert (output / "pages/page_0002.json").is_file()
+    assert not (output / "pages/page_0001.json").exists()
+    assert "Second-page body text." in (output / "document.txt").read_text(encoding="utf-8")
+
+
+def test_builder_rejects_page_outside_document_without_replacing_output(tmp_path: Path) -> None:
+    pdf = tmp_path / "sample.pdf"
+    output = tmp_path / "artifact"
+    _make_pdf(pdf)
+    output.mkdir()
+    marker = output / "known-good.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    builder = PDFArtifactBuilder(ExtractionConfig(page_numbers=(3,), overwrite=True))
+    with pytest.raises(PDFExtractionError, match="exceeds the PDF page count"):
+        builder.build(pdf, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+    assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
+
+
+@pytest.mark.parametrize("page_numbers", [(), (0,), (1, 1), (2, 1), (True,)])
+def test_builder_rejects_invalid_page_selection(page_numbers: tuple[int, ...]) -> None:
+    with pytest.raises(ValueError, match="page_numbers"):
+        PDFArtifactBuilder(ExtractionConfig(page_numbers=page_numbers))
 
 
 def test_builder_protects_nonempty_output(tmp_path: Path) -> None:
