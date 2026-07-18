@@ -22,6 +22,8 @@ class LayoutAnalysis:
     spanning_element_ids: tuple[str, ...]
     ambiguous_element_ids: tuple[str, ...]
     column_element_counts: tuple[int, ...]
+    confidence: float
+    ambiguity_reasons: tuple[str, ...]
 
 
 @dataclass(slots=True)
@@ -93,8 +95,21 @@ def _column_index(box: BBox, boundaries: list[float], page_width: float) -> int 
     return sum(center > boundary for boundary in boundaries)
 
 
+def _layout_confidence(*, element_count: int, ambiguous_count: int, column_counts: list[int]) -> float:
+    """Return a bounded, deterministic confidence score for inferred columns."""
+
+    if element_count == 0:
+        return 1.0
+    ambiguity_penalty = ambiguous_count / element_count
+    populated = [count for count in column_counts if count]
+    imbalance_penalty = 0.0
+    if len(populated) > 1:
+        imbalance_penalty = (max(populated) - min(populated)) / element_count
+    return round(max(0.0, min(1.0, 1.0 - ambiguity_penalty - 0.25 * imbalance_penalty)), 4)
+
+
 def analyze_layout(*, page_width: float, elements: Sequence[SpatialElement]) -> LayoutAnalysis:
-    """Return deterministic column, spanning, and ambiguity diagnostics."""
+    """Return deterministic column, spanning, confidence, and ambiguity diagnostics."""
 
     boundaries = _infer_column_boundaries([element.bbox for element in elements], page_width)
     column_count = len(boundaries) + 1 if boundaries else 1
@@ -111,12 +126,25 @@ def analyze_layout(*, page_width: float, elements: Sequence[SpatialElement]) -> 
             if any(_near_boundary(element.bbox, boundary, page_width) for boundary in boundaries):
                 ambiguous.append(element.id)
 
+    reasons: list[str] = []
+    if ambiguous:
+        reasons.append("elements_near_column_separator")
+    populated = [count for count in counts if count]
+    if len(populated) > 1 and max(populated) > 2 * min(populated):
+        reasons.append("strong_column_population_imbalance")
+
     return LayoutAnalysis(
         column_boundaries=tuple(round(boundary, 4) for boundary in boundaries),
         column_count=column_count,
         spanning_element_ids=tuple(sorted(spanning)),
         ambiguous_element_ids=tuple(sorted(ambiguous)),
         column_element_counts=tuple(counts),
+        confidence=_layout_confidence(
+            element_count=len(elements),
+            ambiguous_count=len(ambiguous),
+            column_counts=counts,
+        ),
+        ambiguity_reasons=tuple(reasons),
     )
 
 
