@@ -32,6 +32,18 @@ validate_artifact(document_artifact)
 - A breaking contract requires a new schema major version and explicit owner approval.
 - The checked-in JSON Schema describes structural interoperability; `validate_artifact()` additionally enforces actionable semantic checks such as canonical bounding-box ordering and unique reading-order positions.
 
+## Reference integrity
+
+`validate_artifact()` verifies the page-local graph in addition to field shapes:
+
+- IDs for text blocks, tables, images, and drawings must be non-empty and unique within the page;
+- every reading-order entry must reference an element present on the same page;
+- the declared reading-order element type must match the referenced collection;
+- malformed element entries are reported with exact JSON-style paths;
+- all violations are collected in one pass so persisted artifacts can be repaired deterministically.
+
+These checks protect downstream projections and retrieval systems from dangling or type-confused references without changing the canonical schema or requiring another runtime package.
+
 ## Distribution guarantee
 
 The schema is stored inside the `akilan.schemas` package and is included in built wheels. `load_artifact_json_schema()` returns a newly decoded object on every call, so callers may modify their local copy without mutating process-global state.
