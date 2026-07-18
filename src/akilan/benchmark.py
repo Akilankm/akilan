@@ -52,6 +52,7 @@ class PerformanceMetrics:
     source_mib_per_second: float
     output_to_source_ratio: float
     cache_hit: bool = False
+    phase_seconds: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +148,10 @@ def _directory_size(path: Path) -> int:
     return sum(entry.stat().st_size for entry in path.rglob("*") if entry.is_file())
 
 
+def _normalized_phases(phases: dict[str, float] | None) -> dict[str, float]:
+    return {name: round(max(0.0, duration), 6) for name, duration in sorted((phases or {}).items())}
+
+
 def _performance_metrics(
     *,
     source: Path,
@@ -155,6 +160,7 @@ def _performance_metrics(
     peak_python_memory_bytes: int,
     page_count: int,
     cache_hit: bool = False,
+    phase_seconds: dict[str, float] | None = None,
 ) -> PerformanceMetrics:
     source_size = source.stat().st_size if source.is_file() else 0
     output_size = _directory_size(destination)
@@ -167,6 +173,7 @@ def _performance_metrics(
         source_mib_per_second=round((source_size / _MIB) / safe_elapsed, 6),
         output_to_source_ratio=round(output_size / source_size, 6) if source_size else 0.0,
         cache_hit=cache_hit,
+        phase_seconds=_normalized_phases(phase_seconds),
     )
 
 
@@ -249,11 +256,15 @@ def run_corpus(
     for source_value in sorted((Path(path).expanduser().resolve() for path in pdf_paths), key=str):
         destination = root / _case_directory(source_value)
         started = perf_counter()
+        phases: dict[str, float] = {}
+        cache_started = perf_counter()
         try:
             identity = _cache_identity(source_value, effective_config)
             cached_metrics = _read_cached_metrics(destination, identity) if use_cache else None
+            phases["cache_lookup"] = perf_counter() - cache_started
             if cached_metrics is not None:
                 elapsed = round(perf_counter() - started, 6)
+                phases["total"] = elapsed
                 cases.append(
                     CorpusCaseResult(
                         source=str(source_value),
@@ -268,11 +279,13 @@ def run_corpus(
                             peak_python_memory_bytes=0,
                             page_count=cached_metrics.page_count,
                             cache_hit=True,
+                            phase_seconds=phases,
                         ),
                     )
                 )
                 continue
         except (OSError, ValueError):
+            phases["cache_lookup"] = perf_counter() - cache_started
             identity = ""
 
         owns_tracemalloc = not tracemalloc.is_tracing()
@@ -282,12 +295,22 @@ def run_corpus(
         else:
             memory_baseline, _ = tracemalloc.get_traced_memory()
         try:
+            extraction_started = perf_counter()
             artifact = PDFArtifactBuilder(effective_config).build(source_value, destination)
-            elapsed = round(perf_counter() - started, 6)
-            peak_memory = _memory_peak_delta(memory_baseline)
+            phases["extraction"] = perf_counter() - extraction_started
+
+            measurement_started = perf_counter()
             artifact_metrics = measure_artifact(artifact)
+            phases["measurement"] = perf_counter() - measurement_started
+
             if use_cache and identity:
+                cache_write_started = perf_counter()
                 _write_cache_marker(destination, identity, artifact_metrics)
+                phases["cache_write"] = perf_counter() - cache_write_started
+
+            elapsed = round(perf_counter() - started, 6)
+            phases["total"] = elapsed
+            peak_memory = _memory_peak_delta(memory_baseline)
             cases.append(
                 CorpusCaseResult(
                     source=str(source_value),
@@ -301,11 +324,14 @@ def run_corpus(
                         elapsed_seconds=elapsed,
                         peak_python_memory_bytes=peak_memory,
                         page_count=artifact_metrics.page_count,
+                        phase_seconds=phases,
                     ),
                 )
             )
         except Exception as exc:
             elapsed = round(perf_counter() - started, 6)
+            phases.setdefault("extraction", max(0.0, elapsed - sum(phases.values())))
+            phases["total"] = elapsed
             peak_memory = _memory_peak_delta(memory_baseline)
             cases.append(
                 CorpusCaseResult(
@@ -319,6 +345,7 @@ def run_corpus(
                         elapsed_seconds=elapsed,
                         peak_python_memory_bytes=peak_memory,
                         page_count=0,
+                        phase_seconds=phases,
                     ),
                     error_type=type(exc).__name__,
                     error_message=str(exc),
