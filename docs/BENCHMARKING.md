@@ -1,6 +1,6 @@
 # Benchmarking AKILAN artifacts
 
-AKILAN benchmarks extraction output at the canonical artifact layer. The benchmark harness does not replace corpus-specific golden assertions; it provides deterministic coverage metrics, failure isolation, and fingerprints that make regressions visible.
+AKILAN benchmarks extraction output at the canonical artifact layer. The benchmark harness does not replace corpus-specific golden assertions; it provides deterministic coverage metrics, failure isolation, fingerprints, and process-local performance evidence that make regressions visible.
 
 ## Corpus layout
 
@@ -46,9 +46,30 @@ The report records:
 - semantic-role distribution;
 - canonical artifact fingerprint;
 - elapsed extraction time;
+- source and generated artifact sizes;
+- pages processed per second;
+- source MiB processed per second;
+- generated-output-to-source size ratio;
+- peak Python-tracked memory;
 - structured error type and message for failed cases.
 
 The canonical fingerprint is computed from the complete JSON-serializable artifact with sorted keys and compact separators. Running the same package, PyMuPDF version, configuration, and PDF twice should produce the same fingerprint.
+
+### Performance interpretation
+
+Performance values are diagnostics, not canonical artifact content. They can vary with operating system, Python version, PyMuPDF version, filesystem, CPU contention, rendering configuration, and PDF structure.
+
+`peak_python_memory_bytes` comes from Python's `tracemalloc` facility. It measures Python-tracked allocations during the case and does not claim to represent complete process RSS or native allocations performed inside MuPDF. Use an external process profiler when release decisions require total resident-memory evidence.
+
+Failed cases retain elapsed time, peak Python memory, and any partial output size. This makes early resource failures visible without reporting the partial directory as a complete artifact.
+
+For stable comparisons:
+
+1. use the same machine and Python/PyMuPDF versions;
+2. keep the extraction configuration identical;
+3. disable unrelated workloads;
+4. compare distributions across several runs rather than treating one run as a hard guarantee;
+5. investigate output-size or throughput changes together with artifact fingerprints and quality assertions.
 
 ## Golden assertions
 
@@ -71,4 +92,5 @@ A benchmark change is mergeable only when:
 2. failures identify the source, exception type, and message;
 3. repeated runs produce identical artifact fingerprints;
 4. new heuristics include a fixture and a focused regression assertion;
-5. no third-party PDF is committed without confirmed redistribution rights.
+5. performance regressions are investigated on equivalent environments and configurations;
+6. no third-party PDF is committed without confirmed redistribution rights.
