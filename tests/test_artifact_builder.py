@@ -93,7 +93,7 @@ def test_failed_overwrite_preserves_last_known_good_artifact(tmp_path: Path) -> 
     marker.write_text("preserve me", encoding="utf-8")
 
     builder = PDFArtifactBuilder(ExtractionConfig(overwrite=True))
-    with pytest.raises(Exception):
+    with pytest.raises(pymupdf.FileDataError):
         builder.build(invalid_pdf, output)
 
     assert marker.read_text(encoding="utf-8") == "preserve me"
