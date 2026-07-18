@@ -8,7 +8,6 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
 from urllib.request import Request, urlopen
 
 import fitz
@@ -127,7 +126,7 @@ def _download_source(source: CorpusSource, destination: Path, timeout_seconds: f
     request = Request(source.url, headers={"User-Agent": "AKILAN-corpus/0.1"})
     temp_path: Path | None = None
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - HTTPS is enforced above
+        with urlopen(request, timeout=timeout_seconds) as response:
             declared_length = response.headers.get("Content-Length")
             if declared_length is not None and int(declared_length) > max_bytes:
                 raise CorpusSourceError(f"{source.source_id}: declared file size exceeds {max_bytes} bytes")
