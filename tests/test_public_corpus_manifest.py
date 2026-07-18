@@ -24,7 +24,9 @@ def test_public_corpus_sources_are_checksum_pinned() -> None:
 
         assert identifier not in identifiers, f"duplicate corpus source id: {identifier}"
         assert filename not in filenames, f"duplicate corpus destination: {filename}"
-        assert _SHA256.fullmatch(digest), f"source {identifier} is not pinned by a lowercase SHA-256 digest"
+        assert _SHA256.fullmatch(digest), (
+            f"source {identifier} is not pinned by a lowercase SHA-256 digest"
+        )
 
         identifiers.add(identifier)
         filenames.add(filename)
