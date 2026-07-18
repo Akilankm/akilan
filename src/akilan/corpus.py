@@ -80,9 +80,12 @@ def load_corpus_sources(path: str | Path) -> tuple[CorpusSource, ...]:
             raise CorpusSourceError(f"{source_id}: filename must be a safe relative .pdf path")
         if source_id in seen_ids or filename.casefold() in seen_files:
             raise CorpusSourceError(f"{source_id}: duplicate source id or filename")
-        if sha256 is not None:
-            if not isinstance(sha256, str) or len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256):
-                raise CorpusSourceError(f"{source_id}: sha256 must be 64 lowercase hexadecimal characters")
+        invalid_sha256 = (
+            sha256 is not None
+            and (not isinstance(sha256, str) or len(sha256) != 64 or any(ch not in "0123456789abcdef" for ch in sha256))
+        )
+        if invalid_sha256:
+            raise CorpusSourceError(f"{source_id}: sha256 must be 64 lowercase hexadecimal characters")
 
         seen_ids.add(source_id)
         seen_files.add(filename.casefold())
