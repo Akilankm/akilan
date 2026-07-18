@@ -6,14 +6,16 @@
       "url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
       "filename": "public/w3c_dummy.pdf",
       "source_page": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/",
-      "purpose": "Small baseline PDF for acquisition, parsing, and smoke-test validation"
+      "purpose": "Small baseline PDF for acquisition, parsing, and smoke-test validation",
+      "sha256": "3df79d34abbca99308e79cb94461c1893582604d68329a41fd4bec1885e6adb4"
     },
     {
       "id": "attention-is-all-you-need",
       "url": "https://arxiv.org/pdf/1706.03762",
       "filename": "public/attention_is_all_you_need.pdf",
       "source_page": "https://arxiv.org/abs/1706.03762",
-      "purpose": "Multi-column research paper with equations, figures, references, and dense technical layout"
+      "purpose": "Multi-column research paper with equations, figures, references, and dense technical layout",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697"
     }
   ]
 }
