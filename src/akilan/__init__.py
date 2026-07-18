@@ -1,6 +1,7 @@
 """AKILAN: geometry-aware PDF artifact construction with PyMuPDF."""
 
 from .api import build_artifact
+from .artifact_integrity import validate_page_identities
 from .config import ExtractionConfig
 from .corpus import (
     CorpusDownload,
@@ -37,5 +38,6 @@ __all__ = [
     "load_corpus_sources",
     "sync_corpus",
     "validate_artifact",
+    "validate_page_identities",
     "verify_corpus",
 ]
