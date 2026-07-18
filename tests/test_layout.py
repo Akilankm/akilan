@@ -17,6 +17,20 @@ def _table(element_id: str, x0: float, y0: float, x1: float, y1: float) -> Table
     )
 
 
+def _order(elements: list[TableElement]) -> list[str]:
+    return [
+        item.element_id
+        for item in build_reading_order(
+            page_width=600,
+            text_blocks=[],
+            tables=elements,
+            images=[],
+            drawings=[],
+            suppress_table_text=True,
+        )
+    ]
+
+
 def test_cross_column_object_is_spanning_and_ordered_between_bands() -> None:
     elements = [
         _table("left-top", 40, 40, 260, 80),
@@ -49,6 +63,42 @@ def test_cross_column_object_is_spanning_and_ordered_between_bands() -> None:
         "right-bottom",
     ]
     assert [item.column_index for item in order] == [0, 1, None, 0, 1]
+
+
+def test_overlapping_column_items_are_not_stranded_after_later_spans() -> None:
+    elements = [
+        _table("left-overlap", 40, 80, 260, 150),
+        _table("right-overlap", 340, 80, 560, 150),
+        _table("first-span", 20, 100, 580, 120),
+        _table("left-middle", 40, 160, 260, 200),
+        _table("right-middle", 340, 160, 560, 200),
+        _table("second-span", 20, 220, 580, 250),
+        _table("left-bottom", 40, 280, 260, 320),
+        _table("right-bottom", 340, 280, 560, 320),
+    ]
+
+    assert _order(elements) == [
+        "first-span",
+        "left-overlap",
+        "left-middle",
+        "right-overlap",
+        "right-middle",
+        "second-span",
+        "left-bottom",
+        "right-bottom",
+    ]
+
+
+def test_spanning_band_order_is_independent_of_input_sequence() -> None:
+    elements = [
+        _table("left-top", 40, 40, 260, 80),
+        _table("right-top", 340, 40, 560, 80),
+        _table("span", 20, 100, 580, 130),
+        _table("left-bottom", 40, 160, 260, 200),
+        _table("right-bottom", 340, 160, 560, 200),
+    ]
+
+    assert _order(elements) == _order(list(reversed(elements)))
 
 
 def test_layout_analysis_reports_weak_separator_assignments() -> None:
