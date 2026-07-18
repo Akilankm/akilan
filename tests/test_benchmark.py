@@ -10,6 +10,7 @@ from akilan.config import ExtractionConfig
 
 
 def _write_pdf(path: Path, text: str) -> None:
+    path.unlink(missing_ok=True)
     document = pymupdf.open()
     page = document.new_page(width=300, height=200)
     page.insert_text((30, 40), text)
