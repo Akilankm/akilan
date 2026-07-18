@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .benchmark import run_corpus, write_corpus_report
@@ -33,6 +34,38 @@ def _config_from_args(args: argparse.Namespace, *, overwrite: bool) -> Extractio
     )
 
 
+def _strip_terminal_newline(value: str) -> str:
+    """Remove one terminal line ending while preserving intentional spaces."""
+
+    if value.endswith("\r\n"):
+        return value[:-2]
+    if value.endswith(("\n", "\r")):
+        return value[:-1]
+    return value
+
+
+def _password_from_args(args: argparse.Namespace) -> str | None:
+    """Resolve an encrypted-PDF password from exactly one configured source."""
+
+    if args.password is not None:
+        return args.password
+    if args.password_file is not None:
+        try:
+            value = args.password_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise SystemExit(f"cannot read password file {args.password_file}: {exc}") from exc
+        password = _strip_terminal_newline(value)
+        if not password:
+            raise SystemExit(f"password file is empty: {args.password_file}")
+        return password
+    if args.password_stdin:
+        password = _strip_terminal_newline(sys.stdin.readline())
+        if not password:
+            raise SystemExit("no password was received on standard input")
+        return password
+    return None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="akilan",
@@ -44,7 +77,21 @@ def build_parser() -> argparse.ArgumentParser:
     extract = subparsers.add_parser("extract", help="Extract a PDF into an artifact directory")
     extract.add_argument("pdf", type=Path)
     extract.add_argument("--output", "-o", type=Path, required=True)
-    extract.add_argument("--password")
+    password_group = extract.add_mutually_exclusive_group()
+    password_group.add_argument(
+        "--password",
+        help="Encrypted-PDF password (visible to process listings and shell history)",
+    )
+    password_group.add_argument(
+        "--password-file",
+        type=Path,
+        help="Read the encrypted-PDF password from a UTF-8 file",
+    )
+    password_group.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read one encrypted-PDF password line from standard input",
+    )
     extract.add_argument("--overwrite", action="store_true")
     _add_extraction_arguments(extract)
 
@@ -63,7 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run_extract(args: argparse.Namespace) -> int:
     config = _config_from_args(args, overwrite=args.overwrite)
-    artifact = PDFArtifactBuilder(config).build(args.pdf, args.output, password=args.password)
+    artifact = PDFArtifactBuilder(config).build(
+        args.pdf,
+        args.output,
+        password=_password_from_args(args),
+    )
     print(
         json.dumps(
             {
