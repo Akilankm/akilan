@@ -7,9 +7,11 @@ import json
 import sys
 from pathlib import Path
 
+from .artifact_loader import load_artifact_directory
 from .benchmark import run_corpus, write_corpus_report
 from .config import ExtractionConfig
 from .extraction import PDFArtifactBuilder
+from .schema import ArtifactSchemaError
 from .version import __version__
 
 
@@ -105,6 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--pattern", default="*.pdf", help="Recursive glob pattern relative to the corpus directory")
     benchmark.add_argument("--no-cache", action="store_true", help="Force a cold benchmark run")
     _add_extraction_arguments(benchmark)
+
+    validate = subparsers.add_parser(
+        "validate",
+        help="Validate a persisted artifact directory and report actionable violations",
+    )
+    validate.add_argument("artifact", type=Path, help="Persisted AKILAN artifact directory")
     return parser
 
 
@@ -160,10 +168,50 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     return 1 if report.failed else 0
 
 
+def _run_validate(args: argparse.Namespace) -> int:
+    artifact_dir = args.artifact.expanduser().resolve()
+    try:
+        document = load_artifact_directory(artifact_dir)
+    except ArtifactSchemaError as exc:
+        print(
+            json.dumps(
+                {
+                    "artifact": str(artifact_dir),
+                    "valid": False,
+                    "violation_count": len(exc.violations),
+                    "violations": [
+                        {"path": violation.path, "message": violation.message}
+                        for violation in exc.violations
+                    ],
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+    statistics = document.get("statistics", {})
+    print(
+        json.dumps(
+            {
+                "artifact": str(artifact_dir),
+                "valid": True,
+                "schema_version": document.get("schema_version"),
+                "pages": statistics.get("page_count", len(document.get("pages", []))),
+                "violation_count": 0,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "extract":
         return _run_extract(args)
     if args.command == "benchmark":
         return _run_benchmark(args)
+    if args.command == "validate":
+        return _run_validate(args)
     return 2
