@@ -12,7 +12,7 @@ from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
 
 _SCALAR_ARTIFACT_PATHS = ("manifest", "document_json", "document_markdown", "plain_text")
 _SEQUENCE_ARTIFACT_PATHS = ("pages", "page_markdown", "images", "renders")
-_MIRRORED_DOCUMENT_FIELDS = ("schema_version", "generator", "source", "document", "statistics", "artifact_files")
+_MIRRORED_DOCUMENT_FIELDS = ("schema_version", "generator", "source", "document", "statistics")
 
 
 def validate_artifact_directory(
@@ -99,6 +99,20 @@ def _validate_manifest_document_consistency(
                     f"must exactly match document.json field {field!r}",
                 )
             )
+
+    manifest_files = manifest.get("artifact_files")
+    document_files = document.get("artifact_files")
+    if isinstance(manifest_files, Mapping) and isinstance(document_files, Mapping):
+        for field in (*_SCALAR_ARTIFACT_PATHS, *_SEQUENCE_ARTIFACT_PATHS):
+            if field == "document_json":
+                continue
+            if manifest_files.get(field) != document_files.get(field):
+                violations.append(
+                    SchemaViolation(
+                        f"$.manifest.artifact_files.{field}",
+                        f"must exactly match document.json artifact_files.{field}",
+                    )
+                )
 
     manifest_pages = manifest.get("pages")
     document_pages = document.get("pages")
