@@ -6,6 +6,7 @@ import mimetypes
 import shutil
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pymupdf
 
@@ -48,12 +49,30 @@ def _embedded_files(doc: pymupdf.Document) -> list[dict[str, Any]]:
     return result
 
 
-def _prepare_output(output_dir: Path, overwrite: bool) -> None:
-    if output_dir.exists() and any(output_dir.iterdir()):
-        if not overwrite:
-            raise FileExistsError(f"Output directory is not empty: {output_dir}. Pass overwrite=True to replace it.")
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+def _validate_output(destination: Path, overwrite: bool) -> None:
+    if destination.exists() and any(destination.iterdir()) and not overwrite:
+        raise FileExistsError(f"Output directory is not empty: {destination}. Pass overwrite=True to replace it.")
+
+
+def _staging_directory(destination: Path) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    return destination.parent / f".{destination.name}.akilan-{uuid4().hex}.tmp"
+
+
+def _publish_output(staging: Path, destination: Path) -> None:
+    backup = destination.parent / f".{destination.name}.akilan-{uuid4().hex}.bak"
+    had_destination = destination.exists()
+    try:
+        if had_destination:
+            destination.replace(backup)
+        staging.replace(destination)
+    except Exception:
+        if had_destination and backup.exists() and not destination.exists():
+            backup.replace(destination)
+        raise
+    else:
+        if backup.exists():
+            shutil.rmtree(backup)
 
 
 def _extract_page(
@@ -152,7 +171,19 @@ class PDFArtifactBuilder:
         destination = Path(output_dir).expanduser().resolve()
         if not source.is_file():
             raise FileNotFoundError(source)
-        _prepare_output(destination, self.config.overwrite)
+        _validate_output(destination, self.config.overwrite)
+        staging = _staging_directory(destination)
+        staging.mkdir()
+        try:
+            artifact = self._build_into(source, staging, password=password)
+            _publish_output(staging, destination)
+            return artifact
+        except Exception:
+            if staging.exists():
+                shutil.rmtree(staging)
+            raise
+
+    def _build_into(self, source: Path, destination: Path, *, password: str | None) -> DocumentArtifact:
         (destination / "pages").mkdir(parents=True, exist_ok=True)
         (destination / "assets" / "images").mkdir(parents=True, exist_ok=True)
 
