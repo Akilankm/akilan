@@ -130,9 +130,23 @@ def _extract_page(
     return artifact
 
 
-def _document_metadata(doc: pymupdf.Document) -> dict[str, Any]:
+def _selected_page_indices(doc: pymupdf.Document, config: ExtractionConfig) -> tuple[int, ...]:
+    if config.page_numbers is None:
+        return tuple(range(doc.page_count))
+    if config.page_numbers[-1] > doc.page_count:
+        raise PDFExtractionError(
+            f"Requested page {config.page_numbers[-1]} exceeds the PDF page count of {doc.page_count}"
+        )
+    return tuple(page_number - 1 for page_number in config.page_numbers)
+
+
+def _document_metadata(doc: pymupdf.Document, page_indices: tuple[int, ...]) -> dict[str, Any]:
+    extracted_page_numbers = [page_index + 1 for page_index in page_indices]
     return {
         "page_count": doc.page_count,
+        "extracted_page_count": len(page_indices),
+        "extracted_page_numbers": extracted_page_numbers,
+        "is_partial_extraction": len(page_indices) != doc.page_count,
         "metadata": to_jsonable(doc.metadata),
         "permissions": int(doc.permissions),
         "is_encrypted": bool(doc.is_encrypted),
@@ -194,7 +208,8 @@ class PDFArtifactBuilder:
             if not doc.is_pdf:
                 raise PDFExtractionError(f"Input is not a PDF: {source}")
 
-            pages = [_extract_page(doc, page_index, destination, self.config) for page_index in range(doc.page_count)]
+            page_indices = _selected_page_indices(doc, self.config)
+            pages = [_extract_page(doc, page_index, destination, self.config) for page_index in page_indices]
             mark_repeated_headers_and_footers(
                 pages,
                 min_pages=self.config.repeated_margin_min_pages,
@@ -211,7 +226,7 @@ class PDFArtifactBuilder:
                     "mime_type": mime_type or "application/pdf",
                     "sha256": sha256_file(source),
                 },
-                document=_document_metadata(doc),
+                document=_document_metadata(doc, page_indices),
                 table_of_contents=to_jsonable(doc.get_toc(simple=False)),
                 embedded_files=_embedded_files(doc),
                 pages=pages,
