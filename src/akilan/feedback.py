@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 _PENDING = "pending"
 _SUPPORTED_STATUSES = {_PENDING, "in_progress", "resolved", "deferred"}
+_IDENTIFIER_PATTERN = re.compile(r"^FB-[0-9]{3,}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,8 +29,9 @@ def load_feedback(path: str | Path = "user_feedback.md") -> tuple[FeedbackItem, 
         ## FB-001 [pending] Short title
 
     Free-form non-empty lines below the heading are retained as details until
-    the next level-two heading. Unknown statuses fail fast so automation cannot
-    silently ignore malformed workflow state.
+    the next level-two heading. Unknown statuses, malformed identifiers, empty
+    titles, and duplicate identifiers fail fast so automation cannot silently
+    ignore or ambiguously process repository-local feedback.
     """
 
     feedback_path = Path(path)
@@ -36,6 +39,7 @@ def load_feedback(path: str | Path = "user_feedback.md") -> tuple[FeedbackItem, 
         return ()
 
     items: list[FeedbackItem] = []
+    seen_identifiers: set[str] = set()
     current: tuple[str, str, str] | None = None
     details: list[str] = []
 
@@ -48,7 +52,10 @@ def load_feedback(path: str | Path = "user_feedback.md") -> tuple[FeedbackItem, 
         current = None
         details = []
 
-    for raw_line in feedback_path.read_text(encoding="utf-8").splitlines():
+    for line_number, raw_line in enumerate(
+        feedback_path.read_text(encoding="utf-8").splitlines(),
+        start=1,
+    ):
         line = raw_line.strip()
         if line.startswith("## "):
             flush()
@@ -57,13 +64,32 @@ def load_feedback(path: str | Path = "user_feedback.md") -> tuple[FeedbackItem, 
                 identifier, remainder = heading.split(" ", 1)
                 status_token, title = remainder.split(" ", 1)
             except ValueError as exc:
-                raise ValueError(f"Invalid feedback heading: {line}") from exc
+                raise ValueError(
+                    f"Invalid feedback heading at line {line_number}: {line}"
+                ) from exc
+            identifier = identifier.strip()
+            title = title.strip()
+            if not _IDENTIFIER_PATTERN.fullmatch(identifier):
+                raise ValueError(
+                    f"Invalid feedback identifier {identifier!r} at line {line_number}"
+                )
+            if identifier in seen_identifiers:
+                raise ValueError(
+                    f"Duplicate feedback identifier {identifier!r} at line {line_number}"
+                )
             if not (status_token.startswith("[") and status_token.endswith("]")):
-                raise ValueError(f"Missing feedback status: {line}")
+                raise ValueError(f"Missing feedback status at line {line_number}: {line}")
             status = status_token[1:-1].strip().lower()
             if status not in _SUPPORTED_STATUSES:
-                raise ValueError(f"Unsupported feedback status {status!r}: {line}")
-            current = (identifier.strip(), status, title.strip())
+                raise ValueError(
+                    f"Unsupported feedback status {status!r} at line {line_number}: {line}"
+                )
+            if not title:
+                raise ValueError(
+                    f"Missing feedback title for {identifier!r} at line {line_number}"
+                )
+            seen_identifiers.add(identifier)
+            current = (identifier, status, title)
         elif current is not None and line and not line.startswith("<!--"):
             details.append(line)
 

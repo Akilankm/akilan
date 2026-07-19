@@ -12,6 +12,15 @@ Use this file to record errors, feature requests, validation observations, and e
 
 Supported statuses: `pending`, `in_progress`, `resolved`, `deferred`.
 
+## Integrity rules
+
+- Every item identifier must use `FB-` followed by at least three digits, for example `FB-001`.
+- Identifiers are permanent and must never be reused, including after an item is resolved or deferred.
+- Every item requires a non-empty title after its status token.
+- Malformed headings, unsupported statuses, duplicate identifiers, and missing titles fail fast with a source line number.
+
+These constraints prevent an automated development cycle from silently skipping, duplicating, or ambiguously resolving user feedback.
+
 ## Template
 
 ```markdown
