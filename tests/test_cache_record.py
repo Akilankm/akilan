@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pymupdf
 
-from akilan import ExtractionConfig, build_artifact, validate_artifact_cache
+from akilan import (
+    ExtractionConfig,
+    build_artifact,
+    resolve_artifact_cache,
+    validate_artifact_cache,
+)
 from akilan.cache_record import CACHE_RECORD_NAME
 
 
@@ -83,3 +88,51 @@ def test_cache_validation_does_not_mutate_artifact(tmp_path: Path) -> None:
 
     assert first == second
     assert before == after
+
+
+def test_cache_resolver_returns_validated_canonical_document(tmp_path: Path) -> None:
+    source = tmp_path / "source.pdf"
+    output = tmp_path / "artifact"
+    _write_pdf(source)
+    build_artifact(source, output)
+
+    resolution = resolve_artifact_cache(source, output)
+
+    assert resolution.hit is True
+    assert resolution.reasons == ()
+    assert resolution.artifact is not None
+    assert resolution.artifact["source"]["file_name"] == "source.pdf"
+    assert resolution.artifact["pages"][0]["page_number"] == 1
+
+
+def test_cache_resolver_returns_none_for_normal_cache_miss(tmp_path: Path) -> None:
+    source = tmp_path / "source.pdf"
+    output = tmp_path / "artifact"
+    _write_pdf(source)
+
+    resolution = resolve_artifact_cache(source, output)
+
+    assert resolution.hit is False
+    assert resolution.artifact is None
+    assert resolution.reasons == (
+        "cache completion record is missing",
+        "artifact directory validation failed with 1 violation(s)",
+    )
+
+
+def test_cache_resolver_returns_detached_payload(tmp_path: Path) -> None:
+    source = tmp_path / "source.pdf"
+    output = tmp_path / "artifact"
+    _write_pdf(source)
+    build_artifact(source, output)
+    before = (output / "document.json").read_bytes()
+
+    first = resolve_artifact_cache(source, output)
+    assert first.artifact is not None
+    first.artifact["source"]["file_name"] = "mutated.pdf"
+    second = resolve_artifact_cache(source, output)
+
+    assert second.hit is True
+    assert second.artifact is not None
+    assert second.artifact["source"]["file_name"] == "source.pdf"
+    assert (output / "document.json").read_bytes() == before
