@@ -40,5 +40,38 @@ def test_feedback_parser_rejects_unknown_status(tmp_path: Path) -> None:
         load_feedback(path)
 
 
+@pytest.mark.parametrize("identifier", ["001", "FB-1", "feedback-001", "FB-ABC"])
+def test_feedback_parser_rejects_malformed_identifiers(
+    tmp_path: Path,
+    identifier: str,
+) -> None:
+    path = tmp_path / "user_feedback.md"
+    path.write_text(f"## {identifier} [pending] Invalid identifier\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid feedback identifier"):
+        load_feedback(path)
+
+
+def test_feedback_parser_rejects_duplicate_identifiers(tmp_path: Path) -> None:
+    path = tmp_path / "user_feedback.md"
+    path.write_text(
+        """## FB-001 [pending] First request
+## FB-001 [resolved] Reused identifier
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate feedback identifier 'FB-001' at line 2"):
+        load_feedback(path)
+
+
+def test_feedback_parser_rejects_missing_title_with_line_number(tmp_path: Path) -> None:
+    path = tmp_path / "user_feedback.md"
+    path.write_text("# User Feedback\n\n## FB-001 [pending] \n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid feedback heading at line 3"):
+        load_feedback(path)
+
+
 def test_missing_feedback_file_is_empty(tmp_path: Path) -> None:
     assert load_feedback(tmp_path / "missing.md") == ()
