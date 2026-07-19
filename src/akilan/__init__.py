@@ -14,6 +14,11 @@ from .corpus import (
     sync_corpus,
     verify_corpus,
 )
+from .element_identity import (
+    DuplicateElementIdentity,
+    ElementIdentityOccurrence,
+    find_duplicate_element_ids,
+)
 from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .manifest_schema import validate_manifest
@@ -34,7 +39,9 @@ __all__ = [
     "CorpusSourceError",
     "CorpusVerification",
     "DocumentArtifact",
+    "DuplicateElementIdentity",
     "DuplicateFootnoteMarker",
+    "ElementIdentityOccurrence",
     "ExtractionConfig",
     "PDFArtifactBuilder",
     "PDFExtractionError",
@@ -42,6 +49,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "find_duplicate_element_ids",
     "find_duplicate_footnote_markers",
     "load_artifact_directory",
     "load_artifact_json_schema",
