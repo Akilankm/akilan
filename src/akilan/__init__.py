@@ -11,6 +11,10 @@ from .benchmark_acceptance import (
     evaluate_corpus,
     write_benchmark_acceptance_report,
 )
+from .benchmark_cache_validation import (
+    BenchmarkCacheViolation,
+    validate_benchmark_cache_entry,
+)
 from .build_profile import ArtifactOperationProfile
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
 from .cache_orchestration import ArtifactBuildResolution, build_or_resolve_artifact
@@ -60,6 +64,7 @@ __all__ = [
     "ArtifactSchemaError",
     "BBox",
     "BenchmarkAcceptanceReport",
+    "BenchmarkCacheViolation",
     "BenchmarkThresholds",
     "BenchmarkViolation",
     "CorpusDownload",
@@ -92,6 +97,7 @@ __all__ = [
     "validate_artifact",
     "validate_artifact_cache",
     "validate_artifact_directory",
+    "validate_benchmark_cache_entry",
     "validate_manifest",
     "validate_page_identities",
     "verify_corpus",
