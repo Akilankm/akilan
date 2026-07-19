@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .artifact_loader import load_artifact_directory
 from .benchmark import run_corpus, write_corpus_report
+from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
 from .config import ExtractionConfig
 from .extraction import PDFArtifactBuilder
 from .schema import ArtifactSchemaError
@@ -99,13 +100,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     benchmark = subparsers.add_parser(
         "benchmark",
-        help="Extract every matching PDF in a corpus and write a machine-readable report",
+        help="Extract every matching PDF in a corpus and enforce acceptance thresholds",
     )
     benchmark.add_argument("corpus", type=Path, help="Directory containing benchmark PDFs")
     benchmark.add_argument("--output-root", type=Path, required=True)
     benchmark.add_argument("--report", type=Path, required=True)
+    benchmark.add_argument(
+        "--acceptance-report",
+        type=Path,
+        help="Optional path for the machine-readable acceptance result",
+    )
     benchmark.add_argument("--pattern", default="*.pdf", help="Recursive glob pattern relative to the corpus directory")
     benchmark.add_argument("--no-cache", action="store_true", help="Force a cold benchmark run")
+    benchmark.add_argument("--min-success-rate", type=float, default=1.0)
+    benchmark.add_argument("--min-ordered-element-ratio", type=float, default=1.0)
+    benchmark.add_argument("--min-pages-per-second", type=float, default=0.0)
+    benchmark.add_argument("--max-output-to-source-ratio", type=float)
     _add_extraction_arguments(benchmark)
 
     validate = subparsers.add_parser(
@@ -147,6 +157,16 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     if not pdf_paths:
         raise SystemExit(f"no benchmark PDFs matched {args.pattern!r} under {corpus}")
 
+    try:
+        thresholds = BenchmarkThresholds(
+            min_success_rate=args.min_success_rate,
+            min_ordered_element_ratio=args.min_ordered_element_ratio,
+            min_pages_per_second=args.min_pages_per_second,
+            max_output_to_source_ratio=args.max_output_to_source_ratio,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"invalid benchmark threshold: {exc}") from exc
+
     report = run_corpus(
         pdf_paths,
         args.output_root,
@@ -154,18 +174,41 @@ def _run_benchmark(args: argparse.Namespace) -> int:
         use_cache=not args.no_cache,
     )
     report_path = write_corpus_report(report, args.report)
+    acceptance = evaluate_corpus(report, thresholds)
+    acceptance_path: Path | None = None
+    if args.acceptance_report is not None:
+        acceptance_path = args.acceptance_report.expanduser().resolve()
+        acceptance_path.parent.mkdir(parents=True, exist_ok=True)
+        acceptance_path.write_text(
+            json.dumps(acceptance.to_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
     print(
         json.dumps(
             {
                 "report": str(report_path),
+                "acceptance_report": str(acceptance_path) if acceptance_path else None,
                 "total": len(report.cases),
                 "succeeded": report.succeeded,
                 "failed": report.failed,
+                "accepted": acceptance.passed,
+                "violation_count": len(acceptance.violations),
+                "violations": [
+                    {
+                        "source": violation.source,
+                        "metric": violation.metric,
+                        "expected": violation.expected,
+                        "actual": violation.actual,
+                        "message": violation.message,
+                    }
+                    for violation in acceptance.violations
+                ],
             },
             indent=2,
         )
     )
-    return 1 if report.failed else 0
+    return 0 if acceptance.passed else 1
 
 
 def _run_validate(args: argparse.Namespace) -> int:
