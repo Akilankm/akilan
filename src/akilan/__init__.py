@@ -4,6 +4,7 @@ from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
+from .build_profile import ArtifactOperationProfile
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
 from .cache_orchestration import ArtifactBuildResolution, build_or_resolve_artifact
 from .cache_record import (
@@ -48,6 +49,7 @@ __all__ = [
     "ArtifactCacheIdentity",
     "ArtifactCacheResolution",
     "ArtifactCacheValidation",
+    "ArtifactOperationProfile",
     "ArtifactSchemaError",
     "BBox",
     "CorpusDownload",
