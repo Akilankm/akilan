@@ -99,7 +99,7 @@ def test_unlabelled_caption_preserves_geometry_first_ranking() -> None:
     caption = _caption("Accuracy by model")
     page = _page(caption)
     page.images = [_image("closer-image", BBox(75, 230, 335, 315))]
-    page.tables = [_table("farther-table", BBox(70, 190, 340, 285))]
+    page.tables = [_table("farther-table", BBox(70, 180, 340, 255))]
 
     infer_document_relationships([page])
 
