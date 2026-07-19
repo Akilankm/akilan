@@ -18,6 +18,10 @@ from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .manifest_schema import validate_manifest
 from .models import DocumentArtifact, PageArtifact
+from .relationship_validation import (
+    DuplicateFootnoteMarker,
+    find_duplicate_footnote_markers,
+)
 from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
 from .schema_resource import load_artifact_json_schema
 from .version import __version__
@@ -30,6 +34,7 @@ __all__ = [
     "CorpusSourceError",
     "CorpusVerification",
     "DocumentArtifact",
+    "DuplicateFootnoteMarker",
     "ExtractionConfig",
     "PDFArtifactBuilder",
     "PDFExtractionError",
@@ -37,6 +42,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "find_duplicate_footnote_markers",
     "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
