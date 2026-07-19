@@ -36,6 +36,12 @@ def test_build_or_resolve_builds_then_reuses_validated_artifact(tmp_path, monkey
     assert built.artifact == json.loads(
         (output_dir / "document.json").read_text(encoding="utf-8")
     )
+    assert built.profile.page_count == 1
+    assert built.profile.cache_lookup_ms >= 0
+    assert built.profile.artifact_build_ms >= 0
+    assert built.profile.postbuild_validation_ms >= 0
+    assert built.profile.total_elapsed_ms >= built.profile.artifact_build_ms
+    assert built.profile.element_counts["text_blocks"] >= 1
 
     def fail_build(*args, **kwargs):
         raise AssertionError("builder must not run on a validated cache hit")
@@ -48,6 +54,9 @@ def test_build_or_resolve_builds_then_reuses_validated_artifact(tmp_path, monkey
     assert reused.prior_miss_reasons == ()
     assert reused.identity == built.identity
     assert reused.artifact == built.artifact
+    assert reused.profile.page_count == 1
+    assert reused.profile.artifact_build_ms == 0
+    assert reused.profile.postbuild_validation_ms == 0
 
 
 def test_build_or_resolve_rebuilds_when_source_identity_changes(tmp_path):
@@ -70,17 +79,23 @@ def test_build_or_resolve_rebuilds_when_source_identity_changes(tmp_path):
     assert second.artifact["source"]["sha256"] == second.identity.source_sha256
 
 
-def test_build_resolution_to_dict_is_stable_and_omits_artifact_payload(tmp_path):
+def test_build_resolution_to_dict_omits_artifact_and_includes_profile(tmp_path):
     pdf_path = tmp_path / "source.pdf"
     output_dir = tmp_path / "artifact"
     _write_pdf(pdf_path, "operational evidence")
 
     result = build_or_resolve_artifact(pdf_path, output_dir)
+    payload = result.to_dict()
 
-    assert result.to_dict() == {
+    assert payload == {
         "cache_hit": False,
         "rebuilt": True,
         "identity": result.identity.to_dict(),
         "prior_miss_reasons": list(result.prior_miss_reasons),
+        "profile": result.profile.to_dict(),
     }
-    assert "artifact" not in result.to_dict()
+    assert "artifact" not in payload
+    assert payload["profile"]["page_count"] == 1
+    assert payload["profile"]["element_counts"] == dict(
+        sorted(payload["profile"]["element_counts"].items())
+    )
