@@ -12,6 +12,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Literal
 
+from .benchmark_cache_validation import validate_benchmark_cache_entry
 from .builder import PDFArtifactBuilder
 from .config import ExtractionConfig
 from .models import DocumentArtifact
@@ -209,15 +210,15 @@ def _cache_identity(source: Path, config: ExtractionConfig) -> str:
 
 
 def _read_cached_metrics(destination: Path, identity: str) -> ArtifactMetrics | None:
-    marker = destination / _CACHE_FILENAME
-    if not marker.is_file():
+    if validate_benchmark_cache_entry(destination, expected_identity=identity):
         return None
+
+    marker = destination / _CACHE_FILENAME
     try:
         payload = json.loads(marker.read_text(encoding="utf-8"))
-        if payload.get("identity") != identity or payload.get("cache_format_version") != _CACHE_FORMAT_VERSION:
+        if payload.get("cache_format_version") != _CACHE_FORMAT_VERSION:
             return None
-        metrics = payload["metrics"]
-        return ArtifactMetrics(**metrics)
+        return ArtifactMetrics(**payload["metrics"])
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
 
@@ -244,8 +245,9 @@ def run_corpus(
     """Extract a corpus independently and return auditable per-file outcomes.
 
     Successful cases are reused only when the source bytes, complete extraction
-    configuration, installed package version, and cache format all match.
-    Corrupt or stale cache markers are ignored and rebuilt safely.
+    configuration, installed package version, cache format, marker metrics, and
+    persisted artifact directory all agree. Invalid cache state is treated as a
+    miss and rebuilt through the normal extraction path.
     """
 
     root = Path(output_root).expanduser().resolve()
