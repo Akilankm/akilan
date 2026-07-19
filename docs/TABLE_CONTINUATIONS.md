@@ -39,10 +39,17 @@ Each affected page receives an additive `metrics.table_continuations` list. Ever
 
 The same relationship is projected onto both participating pages so page-local JSON remains independently auditable.
 
+## Ambiguity abstention
+
+When one source fragment has two eligible target fragments and the confidence margin between the best candidate and runner-up is below `0.08`, AKILAN creates no continuation edge. Both pages receive additive `metrics.table_continuation_ambiguities` evidence containing the source ID, sorted candidate IDs, actual confidence margin, required margin, and the stable rule ID `table-continuation-candidate-margin-v1`.
+
+This prevents deterministic ID ordering from being mistaken for structural evidence. Re-running inference regenerates the same diagnostics without duplication.
+
 ## Conservative behavior
 
 - Candidates with mismatched columns or weak horizontal alignment remain unlinked.
 - Matching is one-to-one and deterministic when multiple tables occur near page boundaries.
+- Effectively tied candidates are explicitly diagnosed and remain unlinked.
 - Non-adjacent pages are never linked.
 - Re-running inference produces identical output and does not duplicate metrics.
 - Header similarity changes only confidence evidence; it cannot create a continuation without the page-boundary, column-count, and alignment gates.
