@@ -127,7 +127,7 @@ def test_caption_links_only_to_nearby_overlapping_visual() -> None:
     )
     assert describes["source_id"] == "caption"
     assert describes["target_id"] == "near-table"
-    assert describes["rule_id"] == "caption-proximity-overlap-v1"
+    assert describes["rule_id"] == "caption-proximity-overlap-v2"
     assert 0.55 <= describes["confidence"] <= 1.0
 
 
