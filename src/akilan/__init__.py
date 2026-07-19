@@ -4,6 +4,13 @@ from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
+from .benchmark_acceptance import (
+    BenchmarkAcceptanceReport,
+    BenchmarkThresholds,
+    BenchmarkViolation,
+    evaluate_corpus,
+    write_benchmark_acceptance_report,
+)
 from .build_profile import ArtifactOperationProfile
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
 from .cache_orchestration import ArtifactBuildResolution, build_or_resolve_artifact
@@ -52,6 +59,9 @@ __all__ = [
     "ArtifactOperationProfile",
     "ArtifactSchemaError",
     "BBox",
+    "BenchmarkAcceptanceReport",
+    "BenchmarkThresholds",
+    "BenchmarkViolation",
     "CorpusDownload",
     "CorpusSource",
     "CorpusSourceError",
@@ -70,6 +80,7 @@ __all__ = [
     "build_artifact",
     "build_artifact_cache_identity",
     "build_or_resolve_artifact",
+    "evaluate_corpus",
     "find_duplicate_element_ids",
     "find_duplicate_footnote_markers",
     "find_persisted_graph_violations",
@@ -84,4 +95,5 @@ __all__ = [
     "validate_manifest",
     "validate_page_identities",
     "verify_corpus",
+    "write_benchmark_acceptance_report",
 ]
