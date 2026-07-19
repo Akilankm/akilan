@@ -5,7 +5,12 @@ from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
-from .cache_record import ArtifactCacheValidation, validate_artifact_cache
+from .cache_record import (
+    ArtifactCacheResolution,
+    ArtifactCacheValidation,
+    resolve_artifact_cache,
+    validate_artifact_cache,
+)
 from .config import ExtractionConfig
 from .corpus import (
     CorpusDownload,
@@ -39,6 +44,7 @@ from .version import __version__
 
 __all__ = [
     "ArtifactCacheIdentity",
+    "ArtifactCacheResolution",
     "ArtifactCacheValidation",
     "ArtifactSchemaError",
     "BBox",
@@ -65,6 +71,7 @@ __all__ = [
     "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
+    "resolve_artifact_cache",
     "sync_corpus",
     "validate_artifact",
     "validate_artifact_cache",
