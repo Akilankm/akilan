@@ -1,94 +1,75 @@
-"""Operational build-performance evidence outside the canonical artifact schema."""
+"""Operational performance evidence outside the canonical artifact schema."""
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Iterator
-
-from .models import DocumentArtifact, PageArtifact
-from .serialization import dump_json
-
-BUILD_PROFILE_FILE = ".akilan-profile.json"
-BUILD_PROFILE_VERSION = "1"
+from typing import Any
 
 
-@dataclass
-class BuildProfiler:
-    """Collect monotonic timing and element-count evidence for one artifact build."""
+@dataclass(frozen=True, slots=True)
+class ArtifactOperationProfile:
+    """Timing and output-volume evidence for one cache-aware build request."""
 
-    started_at: float = field(default_factory=perf_counter)
-    phase_seconds: dict[str, float] = field(default_factory=dict)
-    pages: list[dict[str, Any]] = field(default_factory=list)
+    cache_lookup_ms: float
+    artifact_build_ms: float
+    postbuild_validation_ms: float
+    total_elapsed_ms: float
+    page_count: int
+    element_counts: dict[str, int]
 
-    @contextmanager
-    def phase(self, name: str) -> Iterator[None]:
-        """Measure one named phase and accumulate repeated invocations."""
+    def to_dict(self) -> dict[str, Any]:
+        """Return stable JSON-safe operational evidence."""
 
-        started = perf_counter()
-        try:
-            yield
-        finally:
-            elapsed = max(0.0, perf_counter() - started)
-            self.phase_seconds[name] = self.phase_seconds.get(name, 0.0) + elapsed
-
-    def record_page(self, page: PageArtifact, elapsed_seconds: float) -> None:
-        """Record stable per-page throughput inputs after extraction completes."""
-
-        self.pages.append(
-            {
-                "page_index": page.page_index,
-                "page_number": page.page_number,
-                "elapsed_ms": _milliseconds(elapsed_seconds),
-                "element_counts": {
-                    "text_blocks": len(page.text_blocks),
-                    "tables": len(page.tables),
-                    "images": len(page.images),
-                    "drawings": len(page.drawings),
-                    "links": len(page.links),
-                    "annotations": len(page.annotations),
-                    "widgets": len(page.widgets),
-                },
-            }
-        )
-
-    def to_dict(self, artifact: DocumentArtifact) -> dict[str, Any]:
-        """Return a compact JSON-safe operational profile."""
-
-        total_seconds = max(0.0, perf_counter() - self.started_at)
-        pages = sorted(self.pages, key=lambda item: (item["page_index"], item["page_number"]))
-        extracted_pages = len(pages)
         return {
-            "profile_version": BUILD_PROFILE_VERSION,
-            "source_sha256": artifact.source.get("sha256"),
-            "schema_version": artifact.schema_version,
-            "generator": artifact.generator,
-            "total_elapsed_ms": _milliseconds(total_seconds),
-            "throughput_pages_per_second": round(extracted_pages / total_seconds, 6)
-            if total_seconds > 0
-            else None,
-            "phase_elapsed_ms": {
-                name: _milliseconds(seconds)
-                for name, seconds in sorted(self.phase_seconds.items())
-            },
-            "pages": pages,
-            "statistics": artifact.statistics,
+            "cache_lookup_ms": self.cache_lookup_ms,
+            "artifact_build_ms": self.artifact_build_ms,
+            "postbuild_validation_ms": self.postbuild_validation_ms,
+            "total_elapsed_ms": self.total_elapsed_ms,
+            "page_count": self.page_count,
+            "element_counts": dict(sorted(self.element_counts.items())),
         }
 
 
-def write_build_profile(
-    destination: str | Path,
-    profiler: BuildProfiler,
-    artifact: DocumentArtifact,
-) -> Path:
-    """Write the profile into the staged artifact directory before publication."""
+class OperationProfiler:
+    """Accumulate monotonic phase timings for one orchestration call."""
 
-    path = Path(destination) / BUILD_PROFILE_FILE
-    dump_json(path, profiler.to_dict(artifact))
-    return path
+    def __init__(self) -> None:
+        self._started_at = perf_counter()
+        self._phase_started_at: float | None = None
+        self._phase_ms: dict[str, float] = {}
+
+    def start(self) -> None:
+        self._phase_started_at = perf_counter()
+
+    def stop(self, name: str) -> None:
+        if self._phase_started_at is None:
+            raise RuntimeError("operation profile phase was not started")
+        self._phase_ms[name] = _milliseconds(perf_counter() - self._phase_started_at)
+        self._phase_started_at = None
+
+    def finish(self, artifact: dict[str, Any]) -> ArtifactOperationProfile:
+        statistics = artifact.get("statistics")
+        counts = statistics if isinstance(statistics, dict) else {}
+        document = artifact.get("document")
+        metadata = document if isinstance(document, dict) else {}
+        return ArtifactOperationProfile(
+            cache_lookup_ms=self._phase_ms.get("cache_lookup", 0.0),
+            artifact_build_ms=self._phase_ms.get("artifact_build", 0.0),
+            postbuild_validation_ms=self._phase_ms.get("postbuild_validation", 0.0),
+            total_elapsed_ms=_milliseconds(perf_counter() - self._started_at),
+            page_count=_nonnegative_int(metadata.get("extracted_page_count")),
+            element_counts={
+                str(name): _nonnegative_int(value)
+                for name, value in counts.items()
+                if isinstance(name, str) and isinstance(value, int) and not isinstance(value, bool)
+            },
+        )
 
 
 def _milliseconds(seconds: float) -> float:
     return round(max(0.0, seconds) * 1000.0, 3)
+
+
+def _nonnegative_int(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
