@@ -131,6 +131,82 @@ def test_caption_links_only_to_nearby_overlapping_visual() -> None:
     assert 0.55 <= describes["confidence"] <= 1.0
 
 
+def test_ambiguous_caption_candidates_remain_unlinked_with_diagnostics() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=520)
+    page = _page(0, [caption])
+    page.tables = [
+        TableElement(
+            id="left-table",
+            bbox=BBox(70, 200, 285, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["left"]],
+            cells=[[70.0, 200.0, 285.0, 310.0]],
+            markdown="| left |",
+        ),
+        TableElement(
+            id="right-table",
+            bbox=BBox(315, 200, 530, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["right"]],
+            cells=[[315.0, 200.0, 530.0, 310.0]],
+            markdown="| right |",
+        ),
+    ]
+
+    infer_document_relationships([page])
+
+    assert "describes" not in caption.relationships
+    assert page.metrics["relationship_ambiguities"] == [
+        {
+            "source_id": "caption",
+            "relationship": "describes",
+            "rule_id": "caption-candidate-margin-v1",
+            "candidate_ids": ["left-table", "right-table"],
+            "confidence_margin": 0.0,
+            "minimum_margin": 0.08,
+        }
+    ]
+    assert not any(
+        item["relationship"] == "describes"
+        for item in page.metrics.get("relationship_evidence", [])
+    )
+
+
+def test_caption_ambiguity_diagnostics_are_idempotent_and_input_order_independent() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=520)
+    page = _page(0, [caption])
+    tables = [
+        TableElement(
+            id="left-table",
+            bbox=BBox(70, 200, 285, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["left"]],
+            cells=[[70.0, 200.0, 285.0, 310.0]],
+            markdown="| left |",
+        ),
+        TableElement(
+            id="right-table",
+            bbox=BBox(315, 200, 530, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["right"]],
+            cells=[[315.0, 200.0, 530.0, 310.0]],
+            markdown="| right |",
+        ),
+    ]
+    page.tables = list(reversed(tables))
+
+    infer_document_relationships([page])
+    first = [dict(item) for item in page.metrics["relationship_ambiguities"]]
+    page.tables = tables
+    infer_document_relationships([page])
+
+    assert page.metrics["relationship_ambiguities"] == first
+
+
 def test_relationship_evidence_uses_bounded_semantic_confidence() -> None:
     heading = _block("heading", "heading_1", 60, 90, confidence=0.95)
     body = _block("body", "paragraph", 110, 160, confidence=0.72)

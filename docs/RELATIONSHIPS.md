@@ -43,8 +43,32 @@ The evidence list is deterministic, idempotent, and sorted by source, relationsh
 | `active-section-membership-v1` | `section_heading` | Nearest active heading in canonical reading order |
 | `direct-section-containment-v1` | `contains` | Reciprocal direct section membership |
 | `caption-proximity-overlap-v1` | `describes` | Vertical proximity and horizontal overlap |
+| `caption-candidate-margin-v1` | abstention diagnostic | Best-vs-runner-up confidence margin |
 
 Heading and section confidence is bounded by the lower semantic confidence of the two linked text blocks. Caption confidence combines overlap and normalized distance and is always clamped to `[0, 1]`.
+
+## Caption ambiguity diagnostics
+
+When the two strongest visual candidates have a confidence margin below `0.08`, AKILAN deliberately creates no `describes` edge. Instead it records additive diagnostics under:
+
+```text
+page.metrics.relationship_ambiguities
+```
+
+Example:
+
+```json
+{
+  "source_id": "p0003-text-0012",
+  "relationship": "describes",
+  "rule_id": "caption-candidate-margin-v1",
+  "candidate_ids": ["p0003-table-0001", "p0003-table-0002"],
+  "confidence_margin": 0.0,
+  "minimum_margin": 0.08
+}
+```
+
+Candidate identifiers are sorted, diagnostics are regenerated idempotently, and input collection order cannot change the result. The metric is additive and does not change the canonical artifact schema.
 
 ## Deterministic rules
 
@@ -53,13 +77,13 @@ Heading and section confidence is bounded by the lower semantic confidence of th
 3. Heading levels are derived only from `document_title`, `heading_1`, `heading_2`, and `heading_3`.
 4. Heading state continues across page boundaries until a heading of the same or higher level replaces it.
 5. Headers, footers, page numbers, and unknown blocks are not assigned to sections.
-6. Captions link only when a candidate visual is close vertically and overlaps meaningfully in the horizontal axis.
+6. Captions link only when a candidate visual is close vertically, overlaps meaningfully in the horizontal axis, and wins by the minimum confidence margin.
 7. Existing relationship keys and page metrics not owned by this inference pass are retained.
-8. Re-running inference regenerates the same owned edges and evidence without duplicates.
+8. Re-running inference regenerates the same owned edges, evidence, and ambiguity diagnostics without duplicates.
 
 ## Audit and uncertainty
 
-Ambiguous caption relationships remain unlinked. The implementation does not invent section titles, summarize content, or alter source elements. Downstream systems can inspect the edge rule, confidence, source and target IDs, semantic roles, page geometry, and reading order.
+Ambiguous caption relationships remain unlinked. The implementation does not invent section titles, summarize content, or alter source elements. Downstream systems can inspect edge evidence or abstention diagnostics together with source and target IDs, semantic roles, page geometry, and reading order.
 
 ## Current limits
 
