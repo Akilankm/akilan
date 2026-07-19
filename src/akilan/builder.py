@@ -10,6 +10,8 @@ from uuid import uuid4
 
 import pymupdf
 
+from .cache_identity import build_artifact_cache_identity
+from .cache_record import write_artifact_cache_record
 from .config import ExtractionConfig
 from .extractors import (
     extract_annotations,
@@ -188,10 +190,12 @@ class PDFArtifactBuilder:
         if not source.is_file():
             raise FileNotFoundError(source)
         _validate_output(destination, self.config.overwrite)
+        cache_identity = build_artifact_cache_identity(source, self.config)
         staging = _staging_directory(destination)
         staging.mkdir()
         try:
             artifact = self._build_into(source, staging, password=password)
+            write_artifact_cache_record(staging, cache_identity)
             _publish_output(staging, destination)
             return artifact
         except Exception:
