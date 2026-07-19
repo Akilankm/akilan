@@ -20,6 +20,7 @@ from .manifest_schema import validate_manifest
 from .models import DocumentArtifact, PageArtifact
 from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
 from .schema_resource import load_artifact_json_schema
+from .table_continuation import infer_table_continuations
 from .version import __version__
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "infer_table_continuations",
     "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
