@@ -41,7 +41,7 @@ def test_build_or_resolve_builds_then_reuses_validated_artifact(tmp_path, monkey
     assert built.profile.artifact_build_ms >= 0
     assert built.profile.postbuild_validation_ms >= 0
     assert built.profile.total_elapsed_ms >= built.profile.artifact_build_ms
-    assert built.profile.element_counts["text_blocks"] >= 1
+    assert built.profile.element_counts["text_block_count"] >= 1
 
     def fail_build(*args, **kwargs):
         raise AssertionError("builder must not run on a validated cache hit")
