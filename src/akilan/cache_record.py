@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .artifact_directory import validate_artifact_directory
+from .artifact_loader import load_artifact_directory
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
 from .config import ExtractionConfig
 from .serialization import dump_json
@@ -30,6 +31,26 @@ class ArtifactCacheValidation:
             "identity": self.identity.to_dict(),
             "reasons": list(self.reasons),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactCacheResolution:
+    """Validated cache decision with the canonical document payload on a hit."""
+
+    validation: ArtifactCacheValidation
+    artifact: dict[str, Any] | None
+
+    @property
+    def hit(self) -> bool:
+        """Return whether a complete identity-equivalent artifact was loaded."""
+
+        return self.validation.hit and self.artifact is not None
+
+    @property
+    def reasons(self) -> tuple[str, ...]:
+        """Expose deterministic cache-miss reasons."""
+
+        return self.validation.reasons
 
 
 def write_artifact_cache_record(
@@ -99,3 +120,33 @@ def validate_artifact_cache(
         identity=identity,
         reasons=tuple(reasons),
     )
+
+
+def resolve_artifact_cache(
+    pdf_path: str | Path,
+    artifact_dir: str | Path,
+    config: ExtractionConfig | None = None,
+) -> ArtifactCacheResolution:
+    """Load the canonical artifact only after a complete cache hit is proven.
+
+    Cache misses are normal control flow and return ``artifact=None`` with stable
+    reasons. The artifact directory is validated twice: once for the cache
+    decision and again immediately before loading. This closes the race where a
+    directory changes between validation and consumption.
+    """
+
+    validation = validate_artifact_cache(pdf_path, artifact_dir, config)
+    if not validation.hit:
+        return ArtifactCacheResolution(validation=validation, artifact=None)
+
+    try:
+        artifact = load_artifact_directory(artifact_dir)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        failed_validation = ArtifactCacheValidation(
+            hit=False,
+            identity=validation.identity,
+            reasons=(f"validated cache could not be loaded safely: {exc}",),
+        )
+        return ArtifactCacheResolution(validation=failed_validation, artifact=None)
+
+    return ArtifactCacheResolution(validation=validation, artifact=artifact)
