@@ -14,11 +14,12 @@ def _block(
     x0: float = 50.0,
     x1: float = 500.0,
     confidence: float = 1.0,
+    text: str | None = None,
 ) -> TextBlock:
     return TextBlock(
         id=element_id,
         bbox=BBox(x0, y0, x1, y1),
-        text=element_id,
+        text=text if text is not None else element_id,
         lines=[],
         source_block_number=None,
         semantic_role=role,  # type: ignore[arg-type]
@@ -241,6 +242,154 @@ def test_caption_ambiguity_diagnostics_are_idempotent_and_input_order_independen
     infer_document_relationships([page])
 
     assert page.metrics["relationship_ambiguities"] == first
+
+
+def test_explicit_bracketed_footnote_links_all_preceding_references() -> None:
+    first = _block(
+        "first-reference",
+        "paragraph",
+        100,
+        145,
+        text="The first claim is supported by evidence [1].",
+        confidence=0.9,
+    )
+    second = _block(
+        "second-reference",
+        "list_item",
+        170,
+        205,
+        text="A second explicit citation [1] is retained.",
+        confidence=0.8,
+    )
+    footnote = _block(
+        "footnote-1",
+        "footnote",
+        730,
+        760,
+        text="[1] Public source details.",
+        confidence=1.0,
+    )
+    page = _page(0, [first, second, footnote])
+
+    infer_document_relationships([page])
+
+    assert footnote.relationships["footnote_reference"] == [
+        "first-reference",
+        "second-reference",
+    ]
+    assert first.relationships["has_footnote"] == ["footnote-1"]
+    assert second.relationships["has_footnote"] == ["footnote-1"]
+    evidence = page.metrics["relationship_evidence"]
+    footnote_edges = [
+        item for item in evidence if item["rule_id"] == "explicit-bracketed-footnote-marker-v1"
+    ]
+    assert footnote_edges == [
+        {
+            "source_id": "first-reference",
+            "target_id": "footnote-1",
+            "relationship": "has_footnote",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.855,
+        },
+        {
+            "source_id": "footnote-1",
+            "target_id": "first-reference",
+            "relationship": "footnote_reference",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.855,
+        },
+        {
+            "source_id": "footnote-1",
+            "target_id": "second-reference",
+            "relationship": "footnote_reference",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.76,
+        },
+        {
+            "source_id": "second-reference",
+            "target_id": "footnote-1",
+            "relationship": "has_footnote",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.76,
+        },
+    ]
+
+
+def test_footnote_rule_abstains_without_exact_preceding_marker() -> None:
+    similar = _block(
+        "similar",
+        "paragraph",
+        100,
+        145,
+        text="Version 1 is discussed, but no bracketed source marker is present.",
+    )
+    later = _block(
+        "later",
+        "paragraph",
+        780,
+        810,
+        text="This marker appears after the footnote [1].",
+    )
+    footnote = _block(
+        "footnote-1",
+        "footnote",
+        730,
+        760,
+        text="[1] Public source details.",
+    )
+    unstructured = _block(
+        "unstructured-footnote",
+        "footnote",
+        760,
+        775,
+        text="1. This definition is intentionally outside the supported contract.",
+    )
+    page = _page(0, [similar, footnote, unstructured, later])
+
+    infer_document_relationships([page])
+
+    assert "footnote_reference" not in footnote.relationships
+    assert "footnote_reference" not in unstructured.relationships
+    assert "has_footnote" not in similar.relationships
+    assert "has_footnote" not in later.relationships
+    assert not any(
+        item["rule_id"] == "explicit-bracketed-footnote-marker-v1"
+        for item in page.metrics.get("relationship_evidence", [])
+    )
+
+
+def test_footnote_relationships_are_idempotent_and_preserve_external_edges() -> None:
+    source = _block(
+        "source",
+        "paragraph",
+        100,
+        145,
+        text="The result is externally validated [a].",
+    )
+    footnote = _block(
+        "footnote-a",
+        "footnote",
+        730,
+        760,
+        text="[a] Validation source.",
+    )
+    source.relationships["external_reference"] = ["annotation-1"]
+    page = _page(0, [source, footnote])
+
+    infer_document_relationships([page])
+    first_source_relationships = {
+        key: list(values) for key, values in source.relationships.items()
+    }
+    first_footnote_relationships = {
+        key: list(values) for key, values in footnote.relationships.items()
+    }
+    first_evidence = [dict(item) for item in page.metrics["relationship_evidence"]]
+    infer_document_relationships([page])
+
+    assert source.relationships == first_source_relationships
+    assert footnote.relationships == first_footnote_relationships
+    assert page.metrics["relationship_evidence"] == first_evidence
+    assert source.relationships["external_reference"] == ["annotation-1"]
 
 
 def test_relationship_evidence_uses_bounded_semantic_confidence() -> None:
