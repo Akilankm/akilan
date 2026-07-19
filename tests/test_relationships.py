@@ -131,6 +131,42 @@ def test_caption_links_only_to_nearby_overlapping_visual() -> None:
     assert 0.55 <= describes["confidence"] <= 1.0
 
 
+def test_caption_prefers_stronger_combined_evidence_over_smallest_gap() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=330)
+    page = _page(0, [caption])
+    page.tables = [
+        TableElement(
+            id="closest-but-narrow",
+            bbox=BBox(290, 250, 520, 315),
+            row_count=1,
+            column_count=1,
+            rows=[["narrow"]],
+            cells=[[290.0, 250.0, 520.0, 315.0]],
+            markdown="| narrow |",
+        ),
+        TableElement(
+            id="stronger-overlap",
+            bbox=BBox(70, 190, 340, 300),
+            row_count=1,
+            column_count=1,
+            rows=[["strong"]],
+            cells=[[70.0, 190.0, 340.0, 300.0]],
+            markdown="| strong |",
+        ),
+    ]
+
+    infer_document_relationships([page])
+
+    assert caption.relationships["describes"] == ["stronger-overlap"]
+    evidence = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "describes"
+    )
+    assert evidence["target_id"] == "stronger-overlap"
+    assert "relationship_ambiguities" not in page.metrics
+
+
 def test_ambiguous_caption_candidates_remain_unlinked_with_diagnostics() -> None:
     caption = _block("caption", "caption", 320, 340, x0=80, x1=520)
     page = _page(0, [caption])

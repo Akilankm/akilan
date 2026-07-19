@@ -47,6 +47,18 @@ The evidence list is deterministic, idempotent, and sorted by source, relationsh
 
 Heading and section confidence is bounded by the lower semantic confidence of the two linked text blocks. Caption confidence combines overlap and normalized distance and is always clamped to `[0, 1]`.
 
+## Caption candidate ranking
+
+Eligible visuals must pass both the maximum vertical-gap gate and the minimum horizontal-overlap gate. Candidates are then ranked by the same combined confidence used for audit evidence:
+
+1. higher combined confidence;
+2. smaller vertical gap;
+3. greater horizontal overlap;
+4. stable element-kind rank;
+5. stable element ID.
+
+Using confidence as the primary ordering key keeps selection and ambiguity decisions internally consistent. A slightly farther visual with substantially stronger horizontal alignment can therefore outrank a narrowly overlapping visual that happens to be a few points closer. The remaining keys are deterministic tie-breakers only.
+
 ## Caption ambiguity diagnostics
 
 When the two strongest visual candidates have a confidence margin below `0.08`, AKILAN deliberately creates no `describes` edge. Instead it records additive diagnostics under:
@@ -77,7 +89,7 @@ Candidate identifiers are sorted, diagnostics are regenerated idempotently, and 
 3. Heading levels are derived only from `document_title`, `heading_1`, `heading_2`, and `heading_3`.
 4. Heading state continues across page boundaries until a heading of the same or higher level replaces it.
 5. Headers, footers, page numbers, and unknown blocks are not assigned to sections.
-6. Captions link only when a candidate visual is close vertically, overlaps meaningfully in the horizontal axis, and wins by the minimum confidence margin.
+6. Captions link only when a candidate visual is close vertically, overlaps meaningfully in the horizontal axis, has the strongest combined evidence, and wins by the minimum confidence margin.
 7. Existing relationship keys and page metrics not owned by this inference pass are retained.
 8. Re-running inference regenerates the same owned edges, evidence, and ambiguity diagnostics without duplicates.
 
