@@ -5,6 +5,7 @@ from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
 from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
+from .cache_orchestration import ArtifactBuildResolution, build_or_resolve_artifact
 from .cache_record import (
     ArtifactCacheResolution,
     ArtifactCacheValidation,
@@ -43,6 +44,7 @@ from .schema_resource import load_artifact_json_schema
 from .version import __version__
 
 __all__ = [
+    "ArtifactBuildResolution",
     "ArtifactCacheIdentity",
     "ArtifactCacheResolution",
     "ArtifactCacheValidation",
@@ -65,6 +67,7 @@ __all__ = [
     "__version__",
     "build_artifact",
     "build_artifact_cache_identity",
+    "build_or_resolve_artifact",
     "find_duplicate_element_ids",
     "find_duplicate_footnote_markers",
     "find_persisted_graph_violations",
