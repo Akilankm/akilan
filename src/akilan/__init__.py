@@ -23,6 +23,10 @@ from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .manifest_schema import validate_manifest
 from .models import DocumentArtifact, PageArtifact
+from .persisted_graph_validation import (
+    PersistedGraphViolation,
+    find_persisted_graph_violations,
+)
 from .relationship_validation import (
     DuplicateFootnoteMarker,
     find_duplicate_footnote_markers,
@@ -46,11 +50,13 @@ __all__ = [
     "PDFArtifactBuilder",
     "PDFExtractionError",
     "PageArtifact",
+    "PersistedGraphViolation",
     "SchemaViolation",
     "__version__",
     "build_artifact",
     "find_duplicate_element_ids",
     "find_duplicate_footnote_markers",
+    "find_persisted_graph_violations",
     "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
