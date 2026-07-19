@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from akilan.benchmark import ArtifactMetrics, CorpusCaseResult, CorpusReport, PerformanceMetrics
-from akilan.benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
+from akilan.benchmark_acceptance import (
+    BenchmarkThresholds,
+    evaluate_corpus,
+    write_benchmark_acceptance_report,
+)
 
 
 def _metrics(*, ordered_element_ratio: float = 1.0) -> ArtifactMetrics:
@@ -92,6 +99,7 @@ def test_evaluate_corpus_reports_corpus_and_case_failures() -> None:
         ("broken.pdf", "status"),
     ]
     assert result.violations[1].message == "cannot parse source"
+    assert result.violations[1].rule_id == "benchmark-case-status-v1"
 
 
 def test_evaluate_corpus_reports_quality_and_performance_thresholds() -> None:
@@ -132,6 +140,51 @@ def test_evaluate_corpus_rejects_passed_cases_without_evidence() -> None:
     ]
 
 
+def test_evaluate_corpus_rejects_empty_corpus_explicitly() -> None:
+    result = evaluate_corpus(CorpusReport())
+
+    assert result.passed is False
+    assert [(item.metric, item.rule_id) for item in result.violations] == [
+        ("case_count", "benchmark-corpus-nonempty-v1"),
+        ("success_rate", "benchmark-success-rate-v1"),
+    ]
+
+
+def test_evaluate_corpus_rejects_non_finite_metric_values() -> None:
+    report = CorpusReport(
+        cases=[
+            _passed_case(
+                "invalid.pdf",
+                metrics=_metrics(ordered_element_ratio=float("nan")),
+                performance=_performance(
+                    pages_per_second=float("inf"),
+                    output_to_source_ratio=float("nan"),
+                ),
+            )
+        ]
+    )
+
+    result = evaluate_corpus(report)
+
+    assert result.passed is False
+    assert [(item.metric, item.rule_id) for item in result.violations] == [
+        ("ordered_element_ratio", "benchmark-metric-finite-v1"),
+        ("output_to_source_ratio", "benchmark-metric-finite-v1"),
+        ("pages_per_second", "benchmark-metric-finite-v1"),
+    ]
+    assert [item.actual for item in result.violations] == ["nan", "nan", "inf"]
+
+
+def test_acceptance_report_is_stable_json(tmp_path: Path) -> None:
+    result = evaluate_corpus(CorpusReport(cases=[_passed_case("stable.pdf")]))
+
+    path = write_benchmark_acceptance_report(result, tmp_path / "reports" / "acceptance.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload == result.to_dict()
+    assert path.read_text(encoding="utf-8").endswith("\n")
+
+
 def test_thresholds_reject_invalid_values() -> None:
     with pytest.raises(ValueError, match="min_success_rate"):
         BenchmarkThresholds(min_success_rate=1.1)
@@ -141,3 +194,17 @@ def test_thresholds_reject_invalid_values() -> None:
         BenchmarkThresholds(min_pages_per_second=-1.0)
     with pytest.raises(ValueError, match="max_output_to_source_ratio"):
         BenchmarkThresholds(max_output_to_source_ratio=-1.0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("min_success_rate", float("nan")),
+        ("min_ordered_element_ratio", float("inf")),
+        ("min_pages_per_second", float("nan")),
+        ("max_output_to_source_ratio", float("inf")),
+    ],
+)
+def test_thresholds_reject_non_finite_values(field: str, value: float) -> None:
+    with pytest.raises(ValueError, match=field):
+        BenchmarkThresholds(**{field: value})
