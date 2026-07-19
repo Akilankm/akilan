@@ -10,6 +10,8 @@ from .models import PageArtifact, TableElement
 
 _TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)
 _REPEATED_HEADER_THRESHOLD = 0.8
+_MINIMUM_CANDIDATE_MARGIN = 0.08
+_AMBIGUITY_METRIC = "table_continuation_ambiguities"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +72,6 @@ def _header_similarity(left: TableElement, right: TableElement) -> float:
     right_header = _header(right)
     if not left_header or not right_header or len(left_header) != len(right_header):
         return 0.0
-
     comparable = [
         _token_f1(left_cell, right_cell)
         for left_cell, right_cell in zip(left_header, right_header, strict=True)
@@ -101,7 +102,6 @@ def _candidate_score(left: TableElement, right: TableElement) -> tuple[float, bo
     alignment = _horizontal_alignment(left, right)
     if alignment < 0.72:
         return None
-
     header_similarity = _header_similarity(left, right)
     repeated_header = header_similarity >= _REPEATED_HEADER_THRESHOLD
     confidence = 0.72 + min(0.16, alignment * 0.16)
@@ -111,18 +111,15 @@ def _candidate_score(left: TableElement, right: TableElement) -> tuple[float, bo
 
 
 def infer_table_continuations(pages: list[PageArtifact]) -> list[TableContinuation]:
-    """Infer conservative continuation edges between adjacent pages.
-
-    Native PyMuPDF table detections remain untouched. Results are written into
-    each page's additive ``metrics["table_continuations"]`` projection and also
-    returned for direct testing or downstream processing.
-    """
+    """Infer conservative continuation edges between adjacent pages."""
 
     ordered_pages = sorted(pages, key=lambda page: (page.page_index, page.page_number))
     for page in ordered_pages:
         page.metrics.pop("table_continuations", None)
+        page.metrics.pop(_AMBIGUITY_METRIC, None)
 
     relationships: list[TableContinuation] = []
+    ambiguity_by_page: dict[int, list[dict[str, object]]] = {}
     for left_page, right_page in pairwise(ordered_pages):
         if right_page.page_index != left_page.page_index + 1:
             continue
@@ -139,16 +136,34 @@ def infer_table_continuations(pages: list[PageArtifact]) -> list[TableContinuati
                 if scored is None:
                     continue
                 confidence, repeated_header, header_similarity = scored
-                candidates.append(
-                    (-confidence, left.id, right.id, repeated_header, header_similarity, left, right)
-                )
+                candidates.append((-confidence, left.id, right.id, repeated_header, header_similarity, left, right))
 
         used_left: set[str] = set()
         used_right: set[str] = set()
-        for negative_confidence, _, _, repeated_header, header_similarity, left, right in sorted(candidates):
+        ranked = sorted(candidates)
+        for index, (negative_confidence, _, _, repeated_header, header_similarity, left, right) in enumerate(ranked):
             if left.id in used_left or right.id in used_right:
                 continue
             confidence = -negative_confidence
+            competing = [
+                item for item in ranked[index + 1 :]
+                if item[5].id == left.id and item[6].id not in used_right
+            ]
+            if competing:
+                runner_up_confidence = -competing[0][0]
+                margin = confidence - runner_up_confidence
+                if margin < _MINIMUM_CANDIDATE_MARGIN:
+                    payload = {
+                        "source_table_id": left.id,
+                        "candidate_table_ids": sorted([right.id, competing[0][6].id]),
+                        "rule_id": "table-continuation-candidate-margin-v1",
+                        "confidence_margin": round(margin, 4),
+                        "minimum_margin": _MINIMUM_CANDIDATE_MARGIN,
+                    }
+                    ambiguity_by_page.setdefault(left_page.page_index, []).append(payload)
+                    ambiguity_by_page.setdefault(right_page.page_index, []).append(payload)
+                    used_left.add(left.id)
+                    continue
             relationship = TableContinuation(
                 source_table_id=left.id,
                 target_table_id=right.id,
@@ -166,10 +181,7 @@ def infer_table_continuations(pages: list[PageArtifact]) -> list[TableContinuati
     table_page = {table.id: page.page_index for page in ordered_pages for table in page.tables}
     for relationship in relationships:
         payload = relationship.to_dict()
-        for page_index in {
-            table_page[relationship.source_table_id],
-            table_page[relationship.target_table_id],
-        }:
+        for page_index in {table_page[relationship.source_table_id], table_page[relationship.target_table_id]}:
             by_page.setdefault(page_index, []).append(payload)
 
     for page in ordered_pages:
@@ -177,5 +189,10 @@ def infer_table_continuations(pages: list[PageArtifact]) -> list[TableContinuati
             page.metrics["table_continuations"] = sorted(
                 by_page[page.page_index],
                 key=lambda item: (str(item["source_table_id"]), str(item["target_table_id"])),
+            )
+        if page.page_index in ambiguity_by_page:
+            page.metrics[_AMBIGUITY_METRIC] = sorted(
+                ambiguity_by_page[page.page_index],
+                key=lambda item: (str(item["source_table_id"]), tuple(item["candidate_table_ids"])),
             )
     return relationships
