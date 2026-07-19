@@ -18,10 +18,13 @@ _HEADING_LEVELS = {
 _CONTENT_ROLES = {"paragraph", "list_item", "caption", "code", "footnote"}
 _OWNED_RELATIONSHIPS = {"parent_heading", "section_heading", "contains", "describes"}
 _EVIDENCE_METRIC = "relationship_evidence"
+_AMBIGUITY_METRIC = "relationship_ambiguities"
 _RULE_PARENT_HEADING = "heading-stack-parent-v1"
 _RULE_SECTION_HEADING = "active-section-membership-v1"
 _RULE_CONTAINS = "direct-section-containment-v1"
 _RULE_CAPTION_DESCRIBES = "caption-proximity-overlap-v1"
+_RULE_CAPTION_AMBIGUITY = "caption-candidate-margin-v1"
+_MINIMUM_CAPTION_MARGIN = 0.08
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +78,7 @@ def _reset_owned_relationships(blocks: Iterable[TextBlock]) -> None:
 def _reset_relationship_evidence(pages: Iterable[PageArtifact]) -> None:
     for page in pages:
         page.metrics.pop(_EVIDENCE_METRIC, None)
+        page.metrics.pop(_AMBIGUITY_METRIC, None)
 
 
 def _append_relationship(block: TextBlock, name: str, element_id: str) -> None:
@@ -134,6 +138,7 @@ def _link_caption(
     page: PageArtifact,
     caption: TextBlock,
     evidence_by_page: dict[int, list[_RelationshipEvidence]],
+    ambiguity_by_page: dict[int, list[dict[str, Any]]],
 ) -> None:
     maximum_gap = max(24.0, page.height * 0.12)
     ranked: list[tuple[float, float, int, str, float]] = []
@@ -148,7 +153,25 @@ def _link_caption(
     if not ranked:
         return
 
-    _, _, _, target_id, confidence = min(ranked)
+    ranked.sort()
+    best = ranked[0]
+    if len(ranked) > 1:
+        runner_up = ranked[1]
+        confidence_margin = best[4] - runner_up[4]
+        if confidence_margin < _MINIMUM_CAPTION_MARGIN:
+            ambiguity_by_page[page.page_index].append(
+                {
+                    "source_id": caption.id,
+                    "relationship": "describes",
+                    "rule_id": _RULE_CAPTION_AMBIGUITY,
+                    "candidate_ids": sorted([best[3], runner_up[3]]),
+                    "confidence_margin": round(confidence_margin, 4),
+                    "minimum_margin": _MINIMUM_CAPTION_MARGIN,
+                }
+            )
+            return
+
+    target_id, confidence = best[3], best[4]
     _append_relationship(caption, "describes", target_id)
     _append_evidence(
         evidence_by_page,
@@ -178,6 +201,9 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
         for block in page.text_blocks
     }
     evidence_by_page: dict[int, list[_RelationshipEvidence]] = {
+        page.page_index: [] for page in ordered_pages
+    }
+    ambiguity_by_page: dict[int, list[dict[str, Any]]] = {
         page.page_index: [] for page in ordered_pages
     }
     _reset_owned_relationships(all_blocks)
@@ -241,7 +267,7 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
                 )
 
             if block.semantic_role == "caption":
-                _link_caption(page, block, evidence_by_page)
+                _link_caption(page, block, evidence_by_page, ambiguity_by_page)
 
     for block in all_blocks:
         for relationship in _OWNED_RELATIONSHIPS:
@@ -260,3 +286,9 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
         )
         if evidence:
             page.metrics[_EVIDENCE_METRIC] = [item.to_dict() for item in evidence]
+        ambiguities = sorted(
+            ambiguity_by_page[page.page_index],
+            key=lambda item: (item["source_id"], item["relationship"], item["candidate_ids"]),
+        )
+        if ambiguities:
+            page.metrics[_AMBIGUITY_METRIC] = ambiguities
