@@ -4,6 +4,7 @@ from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
+from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
 from .config import ExtractionConfig
 from .corpus import (
     CorpusDownload,
@@ -36,6 +37,7 @@ from .schema_resource import load_artifact_json_schema
 from .version import __version__
 
 __all__ = [
+    "ArtifactCacheIdentity",
     "ArtifactSchemaError",
     "BBox",
     "CorpusDownload",
@@ -54,6 +56,7 @@ __all__ = [
     "SchemaViolation",
     "__version__",
     "build_artifact",
+    "build_artifact_cache_identity",
     "find_duplicate_element_ids",
     "find_duplicate_footnote_markers",
     "find_persisted_graph_violations",
