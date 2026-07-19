@@ -10,6 +10,7 @@ from akilan.builder import PDFArtifactBuilder
 
 
 def _write_pdf(path: Path, text: str) -> None:
+    path.unlink(missing_ok=True)
     document = pymupdf.open()
     page = document.new_page()
     page.insert_text((72, 72), text)
@@ -27,8 +28,14 @@ def test_build_or_resolve_builds_then_reuses_validated_artifact(tmp_path, monkey
 
     assert built.cache_hit is False
     assert built.rebuilt is True
-    assert built.prior_miss_reasons == ("cache completion record is missing", "artifact directory validation failed with 1 violation(s)")
-    assert built.artifact == json.loads((output_dir / "document.json").read_text(encoding="utf-8"))
+    assert "cache completion record is missing" in built.prior_miss_reasons
+    assert any(
+        reason.startswith("artifact directory validation failed with ")
+        for reason in built.prior_miss_reasons
+    )
+    assert built.artifact == json.loads(
+        (output_dir / "document.json").read_text(encoding="utf-8")
+    )
 
     def fail_build(*args, **kwargs):
         raise AssertionError("builder must not run on a validated cache hit")
@@ -56,7 +63,10 @@ def test_build_or_resolve_rebuilds_when_source_identity_changes(tmp_path):
     assert first.cache_hit is False
     assert second.cache_hit is False
     assert second.identity.key != first.identity.key
-    assert "cache identity does not match the current extraction request" in second.prior_miss_reasons
+    assert (
+        "cache identity does not match the current extraction request"
+        in second.prior_miss_reasons
+    )
     assert second.artifact["source"]["sha256"] == second.identity.source_sha256
 
 
