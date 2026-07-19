@@ -40,6 +40,12 @@ The standard output summary includes:
 
 When `--acceptance-report` is supplied, the complete acceptance result is written as deterministic JSON. This file is suitable for CI artifact retention and downstream release checks.
 
+### Publication integrity
+
+Acceptance reports are published atomically in the destination directory. AKILAN writes and flushes a temporary file before replacing the destination with `os.replace()`. Existing reports therefore remain readable until the new JSON is complete, and failed serialization or publication removes the temporary file without damaging the previous report.
+
+This guarantee applies to acceptance-report publication and is intended for CI readers, artifact collectors, and concurrent monitoring processes that must never observe truncated JSON.
+
 ## Operational policy
 
 Performance thresholds should be calibrated on controlled runners. Cache hits can produce materially different throughput from cold extraction, so use `--no-cache` when establishing or enforcing cold-run baselines.

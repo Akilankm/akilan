@@ -12,6 +12,7 @@ from .benchmark import run_corpus, write_corpus_report
 from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
 from .config import ExtractionConfig
 from .extraction import PDFArtifactBuilder
+from .report_io import write_json_report
 from .schema import ArtifactSchemaError
 from .version import __version__
 
@@ -177,12 +178,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     acceptance = evaluate_corpus(report, thresholds)
     acceptance_path: Path | None = None
     if args.acceptance_report is not None:
-        acceptance_path = args.acceptance_report.expanduser().resolve()
-        acceptance_path.parent.mkdir(parents=True, exist_ok=True)
-        acceptance_path.write_text(
-            json.dumps(acceptance.to_dict(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        acceptance_path = write_json_report(acceptance.to_dict(), args.acceptance_report)
 
     print(
         json.dumps(
