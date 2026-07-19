@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .build_profile import ArtifactOperationProfile, OperationProfiler
 from .builder import PDFArtifactBuilder, PDFExtractionError
 from .cache_identity import ArtifactCacheIdentity
 from .cache_record import resolve_artifact_cache
@@ -20,6 +21,7 @@ class ArtifactBuildResolution:
     cache_hit: bool
     identity: ArtifactCacheIdentity
     prior_miss_reasons: tuple[str, ...]
+    profile: ArtifactOperationProfile
 
     @property
     def rebuilt(self) -> bool:
@@ -28,13 +30,14 @@ class ArtifactBuildResolution:
         return not self.cache_hit
 
     def to_dict(self) -> dict[str, Any]:
-        """Return stable operational evidence without duplicating the artifact payload."""
+        """Return operational evidence without duplicating the artifact payload."""
 
         return {
             "cache_hit": self.cache_hit,
             "rebuilt": self.rebuilt,
             "identity": self.identity.to_dict(),
             "prior_miss_reasons": list(self.prior_miss_reasons),
+            "profile": self.profile.to_dict(),
         }
 
 
@@ -56,18 +59,28 @@ def build_or_resolve_artifact(
     callers must opt into replacement exactly as they do with ``PDFArtifactBuilder``.
     """
 
+    profiler = OperationProfiler()
     effective_config = config or ExtractionConfig()
+
+    profiler.start()
     initial = resolve_artifact_cache(pdf_path, output_dir, effective_config)
+    profiler.stop("cache_lookup")
     if initial.hit and initial.artifact is not None:
         return ArtifactBuildResolution(
             artifact=initial.artifact,
             cache_hit=True,
             identity=initial.validation.identity,
             prior_miss_reasons=(),
+            profile=profiler.finish(initial.artifact),
         )
 
+    profiler.start()
     PDFArtifactBuilder(effective_config).build(pdf_path, output_dir, password=password)
+    profiler.stop("artifact_build")
+
+    profiler.start()
     refreshed = resolve_artifact_cache(pdf_path, output_dir, effective_config)
+    profiler.stop("postbuild_validation")
     if not refreshed.hit or refreshed.artifact is None:
         reasons = "; ".join(refreshed.reasons) or "unknown validation failure"
         raise PDFExtractionError(f"Freshly built artifact could not be resolved safely: {reasons}")
@@ -77,4 +90,5 @@ def build_or_resolve_artifact(
         cache_hit=False,
         identity=refreshed.validation.identity,
         prior_miss_reasons=initial.reasons,
+        profile=profiler.finish(refreshed.artifact),
     )
