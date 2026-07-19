@@ -1,4 +1,4 @@
-"""Deterministic cross-page section and caption relationship inference."""
+"""Deterministic cross-page section, caption, and footnote relationship inference."""
 
 from __future__ import annotations
 
@@ -17,7 +17,15 @@ _HEADING_LEVELS = {
     "heading_3": 3,
 }
 _CONTENT_ROLES = {"paragraph", "list_item", "caption", "code", "footnote"}
-_OWNED_RELATIONSHIPS = {"parent_heading", "section_heading", "contains", "describes"}
+_FOOTNOTE_SOURCE_ROLES = {"paragraph", "list_item", "caption", "code"}
+_OWNED_RELATIONSHIPS = {
+    "parent_heading",
+    "section_heading",
+    "contains",
+    "describes",
+    "footnote_reference",
+    "has_footnote",
+}
 _EVIDENCE_METRIC = "relationship_evidence"
 _AMBIGUITY_METRIC = "relationship_ambiguities"
 _RULE_PARENT_HEADING = "heading-stack-parent-v1"
@@ -26,11 +34,13 @@ _RULE_CONTAINS = "direct-section-containment-v1"
 _RULE_CAPTION_DESCRIBES = "caption-proximity-overlap-v2"
 _RULE_CAPTION_AMBIGUITY = "caption-candidate-margin-v1"
 _RULE_CAPTION_TYPE_ABSTENTION = "caption-explicit-type-gate-v1"
+_RULE_FOOTNOTE_REFERENCE = "explicit-bracketed-footnote-marker-v1"
 _MINIMUM_CAPTION_MARGIN = 0.08
 _TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:table|tab\.)\s*(?:\d+|[ivxlcdm]+)?\b", re.IGNORECASE)
 _FIGURE_CAPTION_PATTERN = re.compile(
     r"^\s*(?:figure|fig\.)\s*(?:\d+|[ivxlcdm]+)?\b", re.IGNORECASE
 )
+_FOOTNOTE_DEFINITION_PATTERN = re.compile(r"^\s*(\[(?:\d{1,3}|[a-z])\])\s+\S", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +266,60 @@ def _link_caption(
     )
 
 
+def _link_explicit_footnotes(
+    page: PageArtifact,
+    evidence_by_page: dict[int, list[_RelationshipEvidence]],
+) -> None:
+    """Link exact bracketed footnote markers to preceding same-page content.
+
+    The rule is deliberately narrow: only blocks classified as ``footnote`` whose
+    text starts with ``[1]``-style or ``[a]``-style markers are considered. A source
+    must contain that exact marker as a standalone token and precede the definition
+    in reading order. Multiple explicit references are retained rather than guessed
+    into a single source.
+    """
+
+    ordered = _ordered_text_blocks(page)
+    order_by_id = {block.id: index for index, block in enumerate(ordered)}
+    for footnote in ordered:
+        if footnote.semantic_role != "footnote":
+            continue
+        marker_match = _FOOTNOTE_DEFINITION_PATTERN.match(footnote.text)
+        if marker_match is None:
+            continue
+        marker = marker_match.group(1)
+        marker_pattern = re.compile(rf"(?<!\w){re.escape(marker)}(?!\w)", re.IGNORECASE)
+        references = [
+            block
+            for block in ordered
+            if block.semantic_role in _FOOTNOTE_SOURCE_ROLES
+            and order_by_id[block.id] < order_by_id[footnote.id]
+            and marker_pattern.search(block.text)
+        ]
+        for source in references:
+            confidence = 0.95 * min(source.semantic_confidence, footnote.semantic_confidence)
+            _append_relationship(footnote, "footnote_reference", source.id)
+            _append_relationship(source, "has_footnote", footnote.id)
+            _append_evidence(
+                evidence_by_page,
+                page.page_index,
+                source_id=footnote.id,
+                target_id=source.id,
+                relationship="footnote_reference",
+                rule_id=_RULE_FOOTNOTE_REFERENCE,
+                confidence=confidence,
+            )
+            _append_evidence(
+                evidence_by_page,
+                page.page_index,
+                source_id=source.id,
+                target_id=footnote.id,
+                relationship="has_footnote",
+                rule_id=_RULE_FOOTNOTE_REFERENCE,
+                confidence=confidence,
+            )
+
+
 def infer_document_relationships(pages: list[PageArtifact]) -> None:
     """Populate deterministic relationships and page-local audit evidence.
 
@@ -340,6 +404,8 @@ def infer_document_relationships(pages: list[PageArtifact]) -> None:
 
             if block.semantic_role == "caption":
                 _link_caption(page, block, evidence_by_page, ambiguity_by_page)
+
+        _link_explicit_footnotes(page, evidence_by_page)
 
     for block in all_blocks:
         for relationship in _OWNED_RELATIONSHIPS:
