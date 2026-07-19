@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -22,9 +23,14 @@ _AMBIGUITY_METRIC = "relationship_ambiguities"
 _RULE_PARENT_HEADING = "heading-stack-parent-v1"
 _RULE_SECTION_HEADING = "active-section-membership-v1"
 _RULE_CONTAINS = "direct-section-containment-v1"
-_RULE_CAPTION_DESCRIBES = "caption-proximity-overlap-v1"
+_RULE_CAPTION_DESCRIBES = "caption-proximity-overlap-v2"
 _RULE_CAPTION_AMBIGUITY = "caption-candidate-margin-v1"
+_RULE_CAPTION_TYPE_ABSTENTION = "caption-explicit-type-gate-v1"
 _MINIMUM_CAPTION_MARGIN = 0.08
+_TABLE_CAPTION_PATTERN = re.compile(r"^\s*(?:table|tab\.)\s*(?:\d+|[ivxlcdm]+)?\b", re.IGNORECASE)
+_FIGURE_CAPTION_PATTERN = re.compile(
+    r"^\s*(?:figure|fig\.)\s*(?:\d+|[ivxlcdm]+)?\b", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +155,17 @@ def _visual_candidates(page: PageArtifact) -> list[_VisualCandidate]:
     )
 
 
-def _rank_caption_candidates(
+def _explicit_caption_kind_ranks(text: str) -> tuple[str, frozenset[int]] | None:
+    """Return an explicit caption label and compatible visual-kind ranks."""
+
+    if _TABLE_CAPTION_PATTERN.match(text):
+        return ("table", frozenset({0}))
+    if _FIGURE_CAPTION_PATTERN.match(text):
+        return ("figure", frozenset({1, 2}))
+    return None
+
+
+def _eligible_caption_candidates(
     page: PageArtifact,
     caption: TextBlock,
 ) -> list[_RankedCaptionCandidate]:
@@ -174,13 +190,40 @@ def _rank_caption_candidates(
     return sorted(ranked, key=lambda item: item.sort_key)
 
 
+def _rank_caption_candidates(
+    page: PageArtifact,
+    caption: TextBlock,
+) -> tuple[list[_RankedCaptionCandidate], dict[str, Any] | None]:
+    ranked = _eligible_caption_candidates(page, caption)
+    explicit_kind = _explicit_caption_kind_ranks(caption.text)
+    if explicit_kind is None:
+        return ranked, None
+
+    label, compatible_ranks = explicit_kind
+    compatible = [candidate for candidate in ranked if candidate.kind_rank in compatible_ranks]
+    if compatible:
+        return compatible, None
+    if not ranked:
+        return [], None
+    return [], {
+        "source_id": caption.id,
+        "relationship": "describes",
+        "rule_id": _RULE_CAPTION_TYPE_ABSTENTION,
+        "candidate_ids": sorted(candidate.element_id for candidate in ranked),
+        "expected_visual_type": label,
+    }
+
+
 def _link_caption(
     page: PageArtifact,
     caption: TextBlock,
     evidence_by_page: dict[int, list[_RelationshipEvidence]],
     ambiguity_by_page: dict[int, list[dict[str, Any]]],
 ) -> None:
-    ranked = _rank_caption_candidates(page, caption)
+    ranked, type_abstention = _rank_caption_candidates(page, caption)
+    if type_abstention is not None:
+        ambiguity_by_page[page.page_index].append(type_abstention)
+        return
     if not ranked:
         return
 
