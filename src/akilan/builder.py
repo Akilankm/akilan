@@ -25,6 +25,7 @@ from .layout import build_reading_order
 from .models import DocumentArtifact, PageArtifact, TextBlock
 from .native import sha256_file
 from .projection import document_plain_text, document_statistics, page_markdown, page_metrics, render_page
+from .relationships import infer_document_relationships
 from .semantics import assign_page_semantics, mark_repeated_headers_and_footers
 from .serialization import dump_json, to_jsonable
 from .version import __version__
@@ -161,7 +162,8 @@ def _document_metadata(doc: pymupdf.Document, page_indices: tuple[int, ...]) -> 
 
 def _write_pages(destination: Path, pages: list[PageArtifact]) -> None:
     for page in pages:
-        page.metrics = page_metrics(page)
+        base_metrics = page_metrics(page)
+        page.metrics = {**base_metrics, **page.metrics}
         dump_json(destination / (page.json_path or ""), page)
         if page.markdown_path:
             (destination / page.markdown_path).write_text(page_markdown(page), encoding="utf-8")
@@ -215,6 +217,7 @@ class PDFArtifactBuilder:
                 min_pages=self.config.repeated_margin_min_pages,
                 min_fraction=self.config.repeated_margin_min_fraction,
             )
+            infer_document_relationships(pages)
             _write_pages(destination, pages)
             mime_type, _ = mimetypes.guess_type(source.name)
             artifact = DocumentArtifact(
