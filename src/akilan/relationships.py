@@ -35,6 +35,21 @@ class _VisualCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class _RankedCaptionCandidate:
+    element_id: str
+    kind_rank: int
+    gap: float
+    overlap: float
+    confidence: float
+
+    @property
+    def sort_key(self) -> tuple[float, float, float, int, str]:
+        """Prefer stronger evidence before deterministic geometric tie-breakers."""
+
+        return (-self.confidence, self.gap, -self.overlap, self.kind_rank, self.element_id)
+
+
+@dataclass(frozen=True, slots=True)
 class _RelationshipEvidence:
     source_id: str
     target_id: str
@@ -134,14 +149,12 @@ def _visual_candidates(page: PageArtifact) -> list[_VisualCandidate]:
     )
 
 
-def _link_caption(
+def _rank_caption_candidates(
     page: PageArtifact,
     caption: TextBlock,
-    evidence_by_page: dict[int, list[_RelationshipEvidence]],
-    ambiguity_by_page: dict[int, list[dict[str, Any]]],
-) -> None:
+) -> list[_RankedCaptionCandidate]:
     maximum_gap = max(24.0, page.height * 0.12)
-    ranked: list[tuple[float, float, int, str, float]] = []
+    ranked: list[_RankedCaptionCandidate] = []
     for candidate in _visual_candidates(page):
         gap = _vertical_gap(caption.bbox, candidate.bbox)
         overlap = _horizontal_overlap_ratio(caption.bbox, candidate.bbox)
@@ -149,38 +162,54 @@ def _link_caption(
             continue
         distance_score = 1.0 - min(1.0, gap / maximum_gap)
         confidence = 0.55 + (0.25 * overlap) + (0.20 * distance_score)
-        ranked.append((gap, -overlap, candidate.kind_rank, candidate.element_id, confidence))
+        ranked.append(
+            _RankedCaptionCandidate(
+                element_id=candidate.element_id,
+                kind_rank=candidate.kind_rank,
+                gap=gap,
+                overlap=overlap,
+                confidence=confidence,
+            )
+        )
+    return sorted(ranked, key=lambda item: item.sort_key)
+
+
+def _link_caption(
+    page: PageArtifact,
+    caption: TextBlock,
+    evidence_by_page: dict[int, list[_RelationshipEvidence]],
+    ambiguity_by_page: dict[int, list[dict[str, Any]]],
+) -> None:
+    ranked = _rank_caption_candidates(page, caption)
     if not ranked:
         return
 
-    ranked.sort()
     best = ranked[0]
     if len(ranked) > 1:
         runner_up = ranked[1]
-        confidence_margin = best[4] - runner_up[4]
+        confidence_margin = best.confidence - runner_up.confidence
         if confidence_margin < _MINIMUM_CAPTION_MARGIN:
             ambiguity_by_page[page.page_index].append(
                 {
                     "source_id": caption.id,
                     "relationship": "describes",
                     "rule_id": _RULE_CAPTION_AMBIGUITY,
-                    "candidate_ids": sorted([best[3], runner_up[3]]),
+                    "candidate_ids": sorted([best.element_id, runner_up.element_id]),
                     "confidence_margin": round(confidence_margin, 4),
                     "minimum_margin": _MINIMUM_CAPTION_MARGIN,
                 }
             )
             return
 
-    target_id, confidence = best[3], best[4]
-    _append_relationship(caption, "describes", target_id)
+    _append_relationship(caption, "describes", best.element_id)
     _append_evidence(
         evidence_by_page,
         page.page_index,
         source_id=caption.id,
-        target_id=target_id,
+        target_id=best.element_id,
         relationship="describes",
         rule_id=_RULE_CAPTION_DESCRIBES,
-        confidence=confidence,
+        confidence=best.confidence,
     )
 
 
