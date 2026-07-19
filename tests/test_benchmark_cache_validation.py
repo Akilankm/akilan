@@ -31,6 +31,13 @@ def _build_cache_entry(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     return root, marker
 
 
+def _write_marker(root: Path, marker: dict[str, object]) -> None:
+    (root / ".akilan-benchmark-cache.json").write_text(
+        json.dumps(marker, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_valid_benchmark_cache_entry_has_no_violations(tmp_path: Path) -> None:
     root, marker = _build_cache_entry(tmp_path)
 
@@ -53,10 +60,7 @@ def test_cached_metrics_must_match_persisted_document(tmp_path: Path) -> None:
     marker["metrics"]["source_sha256"] = "0" * 64
     marker["metrics"]["page_count"] = 999
     marker["metrics"]["artifact_fingerprint"] = "not-a-digest"
-    (root / ".akilan-benchmark-cache.json").write_text(
-        json.dumps(marker, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _write_marker(root, marker)
 
     violations = validate_benchmark_cache_entry(root)
     paths = [violation.path for violation in violations]
@@ -64,6 +68,54 @@ def test_cached_metrics_must_match_persisted_document(tmp_path: Path) -> None:
     assert "$.cache.metrics.source_sha256" in paths
     assert "$.cache.metrics.page_count" in paths
     assert "$.cache.metrics.artifact_fingerprint" in paths
+
+
+def test_marker_format_version_is_required_and_supported(tmp_path: Path) -> None:
+    root, marker = _build_cache_entry(tmp_path)
+    marker["cache_format_version"] = 2
+    _write_marker(root, marker)
+
+    violations = validate_benchmark_cache_entry(root)
+
+    assert any(
+        violation.path == "$.cache.cache_format_version"
+        and "unsupported version 2" in violation.message
+        for violation in violations
+    )
+
+    marker["cache_format_version"] = True
+    _write_marker(root, marker)
+    violations = validate_benchmark_cache_entry(root)
+
+    assert any(
+        violation.path == "$.cache.cache_format_version"
+        and violation.message == "must be an integer"
+        for violation in violations
+    )
+
+
+def test_marker_identity_and_metric_shapes_are_validated(tmp_path: Path) -> None:
+    root, marker = _build_cache_entry(tmp_path)
+    marker["identity"] = "not-a-digest"
+    marker["metrics"]["source_sha256"] = "ABC"
+    marker["metrics"]["page_count"] = True
+    _write_marker(root, marker)
+
+    violations = validate_benchmark_cache_entry(root)
+    evidence = {(violation.path, violation.message) for violation in violations}
+
+    assert (
+        "$.cache.identity",
+        "must be a lowercase 64-character SHA-256 digest",
+    ) in evidence
+    assert (
+        "$.cache.metrics.source_sha256",
+        "must be a lowercase 64-character SHA-256 digest",
+    ) in evidence
+    assert (
+        "$.cache.metrics.page_count",
+        "must be a non-negative integer",
+    ) in evidence
 
 
 def test_expected_identity_mismatch_is_reported_without_mutation(tmp_path: Path) -> None:
