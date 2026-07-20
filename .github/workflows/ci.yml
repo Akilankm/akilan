@@ -30,3 +30,37 @@ jobs:
       - name: Build
         if: matrix.python-version == '3.12'
         run: python -m build
+      - name: Generate copyright-free benchmark corpus
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/generate_ci_benchmark_corpus.py artifacts/ci-corpus \
+            --evidence artifacts/ci-benchmark/generated-corpus.json
+      - name: Run benchmark acceptance gate
+        if: matrix.python-version == '3.12'
+        run: |
+          akilan benchmark artifacts/ci-corpus \
+            --output-root artifacts/ci-benchmark/artifacts \
+            --report artifacts/ci-benchmark/report.json \
+            --acceptance-report artifacts/ci-benchmark/acceptance.json \
+            --min-ordered-element-ratio 0.75 \
+            --no-cache
+      - name: Validate generated artifacts
+        if: matrix.python-version == '3.12'
+        run: |
+          count=0
+          for artifact in artifacts/ci-benchmark/artifacts/*; do
+            [ -d "$artifact" ] || continue
+            akilan validate "$artifact"
+            count=$((count + 1))
+          done
+          test "$count" -gt 0
+      - name: Upload benchmark evidence
+        if: matrix.python-version == '3.12' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-benchmark-evidence
+          path: |
+            artifacts/ci-corpus
+            artifacts/ci-benchmark
+          if-no-files-found: error
+          retention-days: 14
