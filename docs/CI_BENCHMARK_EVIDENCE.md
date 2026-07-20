@@ -25,10 +25,13 @@ akilan benchmark artifacts/ci-corpus \
   --output-root artifacts/ci-benchmark/artifacts \
   --report artifacts/ci-benchmark/report.json \
   --acceptance-report artifacts/ci-benchmark/acceptance.json \
+  --min-ordered-element-ratio 0.75 \
   --no-cache
 ```
 
 The gate fails when extraction fails, ordered-element coverage falls below the configured threshold, or the benchmark command cannot produce its reports. CI then validates the generated artifact directories and uploads the evidence bundle for inspection.
+
+The ordered-element threshold is intentionally below `1.0`. AKILAN preserves decorative vector drawings as canonical source evidence even when they should not participate in reading order. Requiring every retained drawing to be ordered would reward incorrect promotion of decoration into document flow. The generated cases currently produce ratios of `0.80` and approximately `0.91`, so `0.75` remains strict enough to detect substantial reading-order loss while respecting evidence-preservation semantics.
 
 ## Evidence bundle
 
@@ -51,6 +54,7 @@ akilan benchmark /tmp/akilan-ci-corpus \
   --output-root /tmp/akilan-ci-evidence/artifacts \
   --report /tmp/akilan-ci-evidence/report.json \
   --acceptance-report /tmp/akilan-ci-evidence/acceptance.json \
+  --min-ordered-element-ratio 0.75 \
   --no-cache
 
 find /tmp/akilan-ci-evidence/artifacts -mindepth 1 -maxdepth 1 -type d \
