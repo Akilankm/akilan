@@ -18,9 +18,10 @@ def test_generate_corpus_creates_valid_stable_case_set(tmp_path: Path) -> None:
 
     payload = _MODULE.generate_corpus(output)
 
-    assert payload["case_count"] == 5
+    assert payload["case_count"] == 6
     assert [case["case_id"] for case in payload["cases"]] == [
         "annotated_form",
+        "image_heavy",
         "mixed_layout",
         "rotated_cropped",
         "single_column",
@@ -28,6 +29,7 @@ def test_generate_corpus_creates_valid_stable_case_set(tmp_path: Path) -> None:
     ]
     assert sorted(path.name for path in output.glob("*.pdf")) == [
         "annotated_form.pdf",
+        "image_heavy.pdf",
         "mixed_layout.pdf",
         "rotated_cropped.pdf",
         "single_column.pdf",
@@ -44,6 +46,26 @@ def test_generate_corpus_creates_valid_stable_case_set(tmp_path: Path) -> None:
             assert document.metadata["author"] == "AKILAN"
 
 
+def test_image_heavy_fixture_preserves_reuse_and_occurrence_geometry(tmp_path: Path) -> None:
+    payload = _MODULE.generate_corpus(tmp_path / "corpus")
+    image_case = next(case for case in payload["cases"] if case["case_id"] == "image_heavy")
+    page_evidence = image_case["pages"][0]
+
+    assert page_evidence["image_occurrence_count"] == 3
+    assert page_evidence["embedded_image_count"] == 2
+
+    with pymupdf.open(image_case["path"]) as document:
+        page = document[0]
+        image_info = page.get_image_info(xrefs=True)
+        assert len(image_info) == 3
+        assert image_info[0]["xref"] == image_info[1]["xref"]
+        assert image_info[2]["xref"] != image_info[0]["xref"]
+        assert image_info[0]["bbox"] != image_info[1]["bbox"]
+        assert "Figure A: primary generated image" in page.get_text()
+        assert "Figure B: reused image, rotated" in page.get_text()
+        assert "Figure C: distinct square image" in page.get_text()
+
+
 def test_main_writes_machine_readable_evidence(tmp_path: Path, capsys: object) -> None:
     output = tmp_path / "corpus"
     evidence = tmp_path / "evidence" / "generated.json"
@@ -52,14 +74,17 @@ def test_main_writes_machine_readable_evidence(tmp_path: Path, capsys: object) -
 
     assert exit_code == 0
     persisted = json.loads(evidence.read_text(encoding="utf-8"))
-    assert persisted["case_count"] == 5
+    assert persisted["case_count"] == 6
     assert persisted["cases"][0]["case_id"] == "annotated_form"
     assert persisted["cases"][0]["pages"][0]["annotation_count"] == 1
     assert persisted["cases"][0]["pages"][0]["widget_count"] == 1
-    assert persisted["cases"][2]["case_id"] == "rotated_cropped"
-    assert persisted["cases"][2]["pages"][0]["rotation"] == 90
-    assert persisted["cases"][4]["case_id"] == "table_heavy"
-    assert persisted["cases"][4]["pages"][0]["table_count"] >= 1
+    assert persisted["cases"][1]["case_id"] == "image_heavy"
+    assert persisted["cases"][1]["pages"][0]["image_occurrence_count"] == 3
+    assert persisted["cases"][1]["pages"][0]["embedded_image_count"] == 2
+    assert persisted["cases"][3]["case_id"] == "rotated_cropped"
+    assert persisted["cases"][3]["pages"][0]["rotation"] == 90
+    assert persisted["cases"][5]["case_id"] == "table_heavy"
+    assert persisted["cases"][5]["pages"][0]["table_count"] >= 1
     captured = capsys.readouterr()
     printed = json.loads(captured.out)
     assert printed["evidence"] == str(evidence.resolve())
