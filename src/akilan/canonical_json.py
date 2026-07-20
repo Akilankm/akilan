@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -13,14 +14,18 @@ def canonical_json_bytes(value: Any) -> bytes:
 
     The representation is independent of mapping insertion order and formatting:
     keys are recursively sorted, separators are compact, and Unicode text is
-    encoded directly as UTF-8 rather than escaped to ASCII.
+    encoded directly as UTF-8 rather than escaped to ASCII. Unsupported values and
+    non-finite floats are rejected before serialization.
     """
 
+    if not is_json_compatible(value):
+        raise TypeError("value is not compatible with the canonical JSON contract")
     return json.dumps(
         value,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -34,11 +39,13 @@ def is_json_compatible(value: Any) -> bool:
     """Return whether ``value`` can be represented by the canonical contract.
 
     This helper is intentionally conservative and rejects non-string mapping keys,
-    bytes, sets, and arbitrary objects before serialization is attempted.
+    non-finite floats, bytes, sets, and arbitrary objects.
     """
 
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, bool, int)):
         return True
+    if isinstance(value, float):
+        return math.isfinite(value)
     if isinstance(value, Mapping):
         return all(
             isinstance(key, str) and is_json_compatible(item)
