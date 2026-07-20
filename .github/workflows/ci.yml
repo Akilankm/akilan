@@ -30,6 +30,11 @@ jobs:
       - name: Build
         if: matrix.python-version == '3.12'
         run: python -m build
+      - name: Validate user feedback contract
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/validate_user_feedback.py user_feedback.md \
+            --report artifacts/user-feedback-contract.json
       - name: Validate committed notebook contract
         if: matrix.python-version == '3.12'
         run: |
@@ -66,6 +71,7 @@ jobs:
         with:
           name: ci-benchmark-evidence
           path: |
+            artifacts/user-feedback-contract.json
             artifacts/notebook-contract.json
             artifacts/ci-corpus
             artifacts/ci-benchmark
