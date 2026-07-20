@@ -59,6 +59,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-benchmark-evidence
-          path: artifacts/ci-benchmark
+          path: |
+            artifacts/ci-corpus
+            artifacts/ci-benchmark
           if-no-files-found: error
           retention-days: 14
