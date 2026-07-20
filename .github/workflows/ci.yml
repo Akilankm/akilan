@@ -42,6 +42,7 @@ jobs:
             --output-root artifacts/ci-benchmark/artifacts \
             --report artifacts/ci-benchmark/report.json \
             --acceptance-report artifacts/ci-benchmark/acceptance.json \
+            --min-ordered-element-ratio 0.75 \
             --no-cache
       - name: Validate generated artifacts
         if: matrix.python-version == '3.12'
