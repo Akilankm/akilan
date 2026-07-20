@@ -134,11 +134,14 @@ def _write_table_heavy(path: Path) -> None:
     column_edges = (left, 185.0, 298.0, 411.0, right)
     row_edges = (top, 165.0, 205.0, 245.0, 285.0, 325.0, bottom)
 
-    page.draw_rect(pymupdf.Rect(left, top, right, bottom), width=1)
+    grid = page.new_shape()
+    grid.draw_rect(pymupdf.Rect(left, top, right, bottom))
     for y in row_edges[1:-1]:
-        page.draw_line((left, y), (right, y), width=0.8)
+        grid.draw_line((left, y), (right, y))
     for x in column_edges[1:-1]:
-        page.draw_line((x, row_edges[1]), (x, bottom), width=0.8)
+        grid.draw_line((x, row_edges[1]), (x, bottom))
+    grid.finish(width=0.8)
+    grid.commit()
 
     page.insert_text((180, 151), "Quarterly Quality Evidence", fontsize=12)
     headers = ("Case", "Pages", "Coverage", "Status")
