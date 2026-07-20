@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 
 import pytest
-
 from akilan.canonical_json import (
     canonical_json_bytes,
     canonical_json_fingerprint,
@@ -19,7 +18,7 @@ def test_canonical_json_is_order_independent_and_utf8_preserving() -> None:
     second_bytes = canonical_json_bytes(second)
 
     assert first_bytes == second_bytes
-    assert "தமிழ்".encode("utf-8") in first_bytes
+    assert "தமிழ்".encode() in first_bytes
     assert b" " not in first_bytes
     assert canonical_json_fingerprint(first) == canonical_json_fingerprint(second)
     assert canonical_json_fingerprint(first) == hashlib.sha256(first_bytes).hexdigest()
