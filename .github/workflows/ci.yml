@@ -30,6 +30,12 @@ jobs:
       - name: Build
         if: matrix.python-version == '3.12'
         run: python -m build
+      - name: Validate committed notebook contract
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/validate_notebook_contract.py \
+            notebooks/pdf_artifact_workbench.ipynb \
+            --report artifacts/notebook-contract.json
       - name: Generate copyright-free benchmark corpus
         if: matrix.python-version == '3.12'
         run: |
@@ -60,6 +66,7 @@ jobs:
         with:
           name: ci-benchmark-evidence
           path: |
+            artifacts/notebook-contract.json
             artifacts/ci-corpus
             artifacts/ci-benchmark
           if-no-files-found: error
