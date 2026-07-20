@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+
 from akilan.canonical_json import (
     canonical_json_bytes,
     canonical_json_fingerprint,
