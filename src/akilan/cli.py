@@ -13,6 +13,7 @@ from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
 from .benchmark_cache_audit import audit_benchmark_cache, write_benchmark_cache_audit_report
 from .config import ExtractionConfig
 from .extraction import PDFArtifactBuilder
+from .page_selection import PageSelectionError, parse_page_selection
 from .report_io import write_json_report
 from .schema import ArtifactSchemaError
 from .version import __version__
@@ -25,6 +26,21 @@ def _add_extraction_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-tables", action="store_true")
     parser.add_argument("--no-images", action="store_true")
     parser.add_argument("--no-drawings", action="store_true")
+    parser.add_argument(
+        "--pages",
+        metavar="SELECTION",
+        help="One-based pages and inclusive ranges, for example 1,3-5,9",
+    )
+
+
+def _page_numbers_from_args(args: argparse.Namespace) -> tuple[int, ...] | None:
+    expression = getattr(args, "pages", None)
+    if expression is None:
+        return None
+    try:
+        return parse_page_selection(expression)
+    except PageSelectionError as exc:
+        raise SystemExit(f"invalid page selection: {exc}") from exc
 
 
 def _config_from_args(args: argparse.Namespace, *, overwrite: bool) -> ExtractionConfig:
@@ -35,6 +51,7 @@ def _config_from_args(args: argparse.Namespace, *, overwrite: bool) -> Extractio
         extract_tables=not args.no_tables,
         extract_images=not args.no_images,
         extract_drawings=not args.no_drawings,
+        page_numbers=_page_numbers_from_args(args),
         overwrite=overwrite,
     )
 

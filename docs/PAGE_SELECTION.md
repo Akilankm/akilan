@@ -17,6 +17,22 @@ artifact = PDFArtifactBuilder(
 ).build("data/large-report.pdf", "artifacts/selected-pages")
 ```
 
+The same contract is available from both operational CLI paths:
+
+```bash
+akilan extract data/large-report.pdf \
+  --output artifacts/selected-pages \
+  --pages 2,5-6 \
+  --overwrite
+
+akilan benchmark data/corpus \
+  --output-root artifacts/benchmark \
+  --report artifacts/benchmark/report.json \
+  --pages 1-10
+```
+
+`--pages` is parsed before extraction starts. Invalid expressions exit with an actionable error and do not publish or overwrite an artifact. Omitting it preserves full-document extraction.
+
 `parse_page_selection()` accepts comma-separated one-based page numbers and inclusive ranges. It returns the ascending tuple required by `ExtractionConfig.page_numbers`.
 
 The parser deliberately rejects empty tokens, zero or negative pages, descending ranges, duplicate or overlapping selections, out-of-order selections, incomplete ranges, and non-integer tokens. Ambiguous input is never silently reordered or deduplicated because page selection participates in cache identity and artifact ordering.
