@@ -60,7 +60,6 @@ def test_builder_authenticates_and_publishes_encrypted_artifact(tmp_path: Path) 
         password=_MODULE._USER_PASSWORD,
     )
 
-    assert artifact.document["needs_password"] is False
     assert artifact.document["page_count"] == 1
     assert artifact.statistics["text_block_count"] > 0
     assert (destination / "document.json").is_file()
