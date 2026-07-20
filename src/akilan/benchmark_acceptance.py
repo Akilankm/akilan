@@ -19,6 +19,7 @@ class BenchmarkThresholds:
     min_ordered_element_ratio: float = 1.0
     min_pages_per_second: float = 0.0
     max_output_to_source_ratio: float | None = None
+    max_peak_python_memory_bytes: int | None = None
 
     def __post_init__(self) -> None:
         for name in ("min_success_rate", "min_ordered_element_ratio"):
@@ -30,6 +31,11 @@ class BenchmarkThresholds:
         maximum_ratio = self.max_output_to_source_ratio
         if maximum_ratio is not None and (not math.isfinite(maximum_ratio) or maximum_ratio < 0.0):
             raise ValueError("max_output_to_source_ratio must be finite and non-negative when provided")
+        maximum_memory = self.max_peak_python_memory_bytes
+        if maximum_memory is not None and (
+            isinstance(maximum_memory, bool) or not isinstance(maximum_memory, int) or maximum_memory < 0
+        ):
+            raise ValueError("max_peak_python_memory_bytes must be a non-negative integer when provided")
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +224,32 @@ def evaluate_corpus(
                     )
                 )
 
+        peak_memory = case.performance.peak_python_memory_bytes
+        if isinstance(peak_memory, bool) or not isinstance(peak_memory, int) or peak_memory < 0:
+            case_violations.append(
+                BenchmarkViolation(
+                    source=case.source,
+                    metric="peak_python_memory_bytes",
+                    expected="non-negative integer",
+                    actual=peak_memory,
+                    message="peak Python memory evidence is invalid",
+                    rule_id="benchmark-memory-evidence-valid-v1",
+                )
+            )
+        else:
+            maximum_memory = effective.max_peak_python_memory_bytes
+            if maximum_memory is not None and peak_memory > maximum_memory:
+                case_violations.append(
+                    BenchmarkViolation(
+                        source=case.source,
+                        metric="peak_python_memory_bytes",
+                        expected=f"<= {maximum_memory}",
+                        actual=peak_memory,
+                        message="peak Python memory exceeds the allowed threshold",
+                        rule_id="benchmark-peak-python-memory-v1",
+                    )
+                )
+
     violations.extend(sorted(case_violations, key=lambda item: (item.source, item.metric, item.rule_id)))
     return BenchmarkAcceptanceReport(thresholds=effective, violations=violations)
 
@@ -226,7 +258,7 @@ def write_benchmark_acceptance_report(
     report: BenchmarkAcceptanceReport,
     destination: str | Path,
 ) -> Path:
-    """Persist stable acceptance evidence for CI and return the resolved path."""
+    """Persist stable acceptance evidence for CI and return its resolved path."""
 
     path = Path(destination).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
