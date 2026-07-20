@@ -4,7 +4,6 @@ import importlib.util
 import json
 from pathlib import Path
 
-
 SCRIPT = Path(__file__).parents[1] / "scripts" / "compare_benchmark_reports.py"
 SPEC = importlib.util.spec_from_file_location("compare_benchmark_reports_cli", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
@@ -44,10 +43,14 @@ def test_main_writes_passing_report(tmp_path: Path, capsys) -> None:
         [
             str(baseline),
             str(candidate),
-            "--report", str(output),
-            "--max-elapsed-increase-ratio", "0.06",
-            "--max-memory-increase-ratio", "0.06",
-            "--max-throughput-decrease-ratio", "0.03",
+            "--report",
+            str(output),
+            "--max-elapsed-increase-ratio",
+            "0.06",
+            "--max-memory-increase-ratio",
+            "0.06",
+            "--max-throughput-decrease-ratio",
+            "0.03",
         ]
     )
 
