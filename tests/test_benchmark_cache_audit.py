@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from akilan.benchmark_cache_audit import (
     audit_benchmark_cache,
     write_benchmark_cache_audit_report,
