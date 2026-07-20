@@ -17,19 +17,19 @@ _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
 
 
-def test_generate_encrypted_fixtures_persists_expected_security_contract(tmp_path: Path) -> None:
-    payload = _MODULE.generate_fixtures(tmp_path / "corpus")
+def test_generate_encrypted_fixture_persists_expected_security_contract(tmp_path: Path) -> None:
+    payload = _MODULE.generate_fixture(tmp_path / "corpus")
 
-    assert payload["case_count"] == 2
-    assert [case["case_id"] for case in payload["cases"]] == ["owner_only", "user_password"]
-    assert all(case["is_pdf"] for case in payload["cases"])
-    assert all(case["is_encrypted"] for case in payload["cases"])
+    assert payload["case_count"] == 1
+    assert payload["credential_values_included"] is False
+    assert payload["production_use_forbidden"] is True
+    protected = payload["cases"][0]
+    assert protected["case_id"] == "user_password"
+    assert protected["is_pdf"] is True
+    assert protected["is_encrypted"] is True
+    assert protected["needs_password"] is True
 
-    owner_case, protected_case = payload["cases"]
-    assert owner_case["needs_password"] is False
-    assert protected_case["needs_password"] is True
-
-    with pymupdf.open(protected_case["path"]) as document:
+    with pymupdf.open(protected["path"]) as document:
         assert document.needs_pass
         assert document.authenticate(_MODULE._USER_PASSWORD) > 0
         assert document.page_count == 1
@@ -37,8 +37,7 @@ def test_generate_encrypted_fixtures_persists_expected_security_contract(tmp_pat
 
 
 def test_builder_rejects_missing_and_invalid_password_without_publishing_output(tmp_path: Path) -> None:
-    payload = _MODULE.generate_fixtures(tmp_path / "corpus")
-    protected = next(case for case in payload["cases"] if case["case_id"] == "user_password")
+    protected = _MODULE.generate_fixture(tmp_path / "corpus")["cases"][0]
     destination = tmp_path / "artifact"
     builder = PDFArtifactBuilder(ExtractionConfig(overwrite=True))
 
@@ -52,8 +51,7 @@ def test_builder_rejects_missing_and_invalid_password_without_publishing_output(
 
 
 def test_builder_authenticates_and_publishes_encrypted_artifact(tmp_path: Path) -> None:
-    payload = _MODULE.generate_fixtures(tmp_path / "corpus")
-    protected = next(case for case in payload["cases"] if case["case_id"] == "user_password")
+    protected = _MODULE.generate_fixture(tmp_path / "corpus")["cases"][0]
     destination = tmp_path / "artifact"
 
     artifact = PDFArtifactBuilder(ExtractionConfig(overwrite=True)).build(
@@ -62,7 +60,6 @@ def test_builder_authenticates_and_publishes_encrypted_artifact(tmp_path: Path) 
         password=_MODULE._USER_PASSWORD,
     )
 
-    assert artifact.document["is_encrypted"] is True
     assert artifact.document["needs_password"] is False
     assert artifact.document["page_count"] == 1
     assert artifact.statistics["text_block_count"] > 0
@@ -70,7 +67,7 @@ def test_builder_authenticates_and_publishes_encrypted_artifact(tmp_path: Path) 
     assert (destination / "manifest.json").is_file()
 
 
-def test_main_writes_machine_readable_encrypted_fixture_evidence(tmp_path: Path, capsys: object) -> None:
+def test_main_writes_credential_free_machine_readable_evidence(tmp_path: Path, capsys: object) -> None:
     output = tmp_path / "corpus"
     evidence = tmp_path / "evidence" / "encrypted.json"
 
@@ -78,10 +75,13 @@ def test_main_writes_machine_readable_encrypted_fixture_evidence(tmp_path: Path,
 
     assert exit_code == 0
     persisted = json.loads(evidence.read_text(encoding="utf-8"))
-    assert persisted["case_count"] == 2
-    assert persisted["cases"][0]["case_id"] == "owner_only"
-    assert persisted["cases"][1]["case_id"] == "user_password"
-    assert persisted["cases"][1]["needs_password"] is True
+    assert persisted["case_count"] == 1
+    assert persisted["cases"][0]["case_id"] == "user_password"
+    assert persisted["cases"][0]["needs_password"] is True
+    assert persisted["credential_values_included"] is False
+    serialized = json.dumps(persisted)
+    assert _MODULE._OWNER_PASSWORD not in serialized
+    assert _MODULE._USER_PASSWORD not in serialized
     captured = capsys.readouterr()
     printed = json.loads(captured.out)
     assert printed["evidence"] == str(evidence.resolve())
