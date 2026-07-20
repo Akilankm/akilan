@@ -160,7 +160,18 @@ def _write_table_heavy(path: Path) -> None:
         for column_index, value in enumerate(values):
             page.insert_text((centers[column_index] - 18, baseline), value, fontsize=9)
 
-    page.insert_text((72, 410), "Table note: all values are generated and deterministic.", fontsize=10)
+    notes = (
+        "Table note: all values are generated and deterministic.",
+        "Coverage values are stable benchmark evidence, not production claims.",
+        "The title spans all columns while data rows retain fixed boundaries.",
+        "The note region remains outside the detected table rectangle.",
+        "Native table output is preserved separately from narrative reading order.",
+        "Cell text provides predictable assertions for regression testing.",
+        "The fixture contains no third-party or copyrighted source material.",
+        "PyMuPDF is the only runtime dependency used to construct this page.",
+    )
+    for index, note in enumerate(notes):
+        page.insert_text((72, 410 + index * 24), note, fontsize=9)
     _save(document, path)
 
 
