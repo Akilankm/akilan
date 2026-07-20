@@ -38,6 +38,10 @@ def _write_marker(root: Path, marker: dict[str, object]) -> None:
     )
 
 
+def _write_json(path: Path, payload: object) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def test_valid_benchmark_cache_entry_has_no_violations(tmp_path: Path) -> None:
     root, marker = _build_cache_entry(tmp_path)
 
@@ -68,6 +72,25 @@ def test_cached_metrics_must_match_persisted_document(tmp_path: Path) -> None:
     assert "$.cache.metrics.source_sha256" in paths
     assert "$.cache.metrics.page_count" in paths
     assert "$.cache.metrics.artifact_fingerprint" in paths
+
+
+def test_schema_valid_content_tampering_invalidates_fingerprint(tmp_path: Path) -> None:
+    root, _ = _build_cache_entry(tmp_path)
+    document_path = root / "document.json"
+    document = json.loads(document_path.read_text(encoding="utf-8"))
+    page = document["pages"][0]
+    page["text_blocks"][0]["lines"][0]["spans"][0]["text"] = "tampered content"
+    _write_json(document_path, document)
+    _write_json(root / page["json_path"], page)
+
+    violations = validate_benchmark_cache_entry(root)
+
+    assert any(
+        violation.path == "$.cache.metrics.artifact_fingerprint"
+        and violation.message == "must match the canonical fingerprint of document.json"
+        for violation in violations
+    )
+    assert not any(violation.path.startswith("$.artifact") for violation in violations)
 
 
 def test_marker_format_version_is_required_and_supported(tmp_path: Path) -> None:
