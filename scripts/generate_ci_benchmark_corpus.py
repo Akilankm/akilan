@@ -118,6 +118,49 @@ def _write_annotated_form(path: Path) -> None:
     _save(document, path)
 
 
+def _write_table_heavy(path: Path) -> None:
+    """Write deterministic ruled-table evidence with merged header geometry."""
+
+    document = _new_document("Table-heavy generated fixture")
+    page = document.new_page(width=_PAGE.width, height=_PAGE.height)
+    page.insert_text((72, 62), "AKILAN Benchmark: Table Heavy", fontsize=18)
+    page.insert_text(
+        (72, 88),
+        "Ruled cells, repeated numeric values, and a spanning title exercise native table detection.",
+        fontsize=10,
+    )
+
+    left, top, right, bottom = 72.0, 125.0, 523.0, 365.0
+    column_edges = (left, 185.0, 298.0, 411.0, right)
+    row_edges = (top, 165.0, 205.0, 245.0, 285.0, 325.0, bottom)
+
+    page.draw_rect(pymupdf.Rect(left, top, right, bottom), width=1)
+    for y in row_edges[1:-1]:
+        page.draw_line((left, y), (right, y), width=0.8)
+    for x in column_edges[1:-1]:
+        page.draw_line((x, row_edges[1]), (x, bottom), width=0.8)
+
+    page.insert_text((180, 151), "Quarterly Quality Evidence", fontsize=12)
+    headers = ("Case", "Pages", "Coverage", "Status")
+    rows = (
+        ("Single", "1", "0.98", "Pass"),
+        ("Mixed", "1", "0.91", "Pass"),
+        ("Rotated", "1", "0.95", "Pass"),
+        ("Forms", "1", "1.00", "Pass"),
+        ("Tables", "1", "0.97", "Pass"),
+    )
+    centers = tuple((column_edges[index] + column_edges[index + 1]) / 2 for index in range(4))
+    for index, value in enumerate(headers):
+        page.insert_text((centers[index] - 24, 191), value, fontsize=10)
+    for row_index, values in enumerate(rows):
+        baseline = 231 + row_index * 40
+        for column_index, value in enumerate(values):
+            page.insert_text((centers[column_index] - 18, baseline), value, fontsize=9)
+
+    page.insert_text((72, 410), "Table note: all values are generated and deterministic.", fontsize=10)
+    _save(document, path)
+
+
 def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
     return {
         "page_number": page.number + 1,
@@ -126,6 +169,7 @@ def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
         "crop_box": list(page.cropbox),
         "annotation_count": sum(1 for _ in (page.annots() or ())),
         "widget_count": sum(1 for _ in (page.widgets() or ())),
+        "table_count": len(page.find_tables().tables),
     }
 
 
@@ -139,11 +183,13 @@ def generate_corpus(output_dir: Path) -> dict[str, object]:
         "mixed_layout": output_dir / "mixed_layout.pdf",
         "rotated_cropped": output_dir / "rotated_cropped.pdf",
         "single_column": output_dir / "single_column.pdf",
+        "table_heavy": output_dir / "table_heavy.pdf",
     }
     _write_annotated_form(cases["annotated_form"])
     _write_single_column(cases["single_column"])
     _write_mixed_layout(cases["mixed_layout"])
     _write_rotated_cropped(cases["rotated_cropped"])
+    _write_table_heavy(cases["table_heavy"])
 
     evidence: list[dict[str, object]] = []
     for case_id, path in sorted(cases.items()):
