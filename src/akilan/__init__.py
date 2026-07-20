@@ -43,6 +43,7 @@ from .extraction import PDFArtifactBuilder, PDFExtractionError
 from .geometry import BBox
 from .manifest_schema import validate_manifest
 from .models import DocumentArtifact, PageArtifact
+from .page_selection import PageSelectionError, parse_page_selection
 from .persisted_graph_validation import (
     PersistedGraphViolation,
     find_persisted_graph_violations,
@@ -79,6 +80,7 @@ __all__ = [
     "PDFArtifactBuilder",
     "PDFExtractionError",
     "PageArtifact",
+    "PageSelectionError",
     "PersistedGraphViolation",
     "SchemaViolation",
     "__version__",
@@ -92,6 +94,7 @@ __all__ = [
     "load_artifact_directory",
     "load_artifact_json_schema",
     "load_corpus_sources",
+    "parse_page_selection",
     "resolve_artifact_cache",
     "sync_corpus",
     "validate_artifact",
