@@ -222,8 +222,62 @@ def _write_table_heavy(path: Path) -> None:
     _save(document, path)
 
 
+def _write_vector_heavy(path: Path) -> None:
+    """Write deterministic vector paths with varied geometry and paint operations."""
+
+    document = _new_document("Vector-heavy generated fixture")
+    page = document.new_page(width=_PAGE.width, height=_PAGE.height)
+    page.insert_text((72, 62), "AKILAN Benchmark: Vector Heavy", fontsize=18)
+    page.insert_textbox(
+        pymupdf.Rect(72, 84, 520, 132),
+        "Generated paths exercise line, rectangle, curve, fill, stroke, dash, width, and opacity evidence.",
+        fontsize=10,
+    )
+
+    frame = page.new_shape()
+    frame.draw_rect(pymupdf.Rect(72, 160, 250, 300))
+    frame.draw_line((72, 230), (250, 230))
+    frame.finish(color=(0.1, 0.2, 0.6), fill=(0.88, 0.92, 0.98), width=2)
+    frame.commit()
+
+    curve = page.new_shape()
+    curve.draw_bezier((300, 285), (330, 150), (450, 150), (485, 285))
+    curve.finish(color=(0.65, 0.15, 0.15), width=3, dashes="[6 3] 0")
+    curve.commit()
+
+    polygon = page.new_shape()
+    polygon.draw_polyline(((100, 390), (170, 335), (240, 390), (205, 470), (135, 470), (100, 390)))
+    polygon.finish(color=(0.1, 0.45, 0.25), fill=(0.82, 0.95, 0.86), width=1.5, fill_opacity=0.7)
+    polygon.commit()
+
+    ring = page.new_shape()
+    ring.draw_circle((390, 405), 75)
+    ring.draw_circle((390, 405), 35)
+    ring.finish(color=(0.35, 0.15, 0.55), width=2, stroke_opacity=0.8)
+    ring.commit()
+
+    labels = (
+        "Panel A: stroked and filled rectangle",
+        "Panel B: dashed cubic Bezier curve",
+        "Panel C: closed polygon with translucent fill",
+        "Panel D: concentric circular vector paths",
+        "All coordinates are deterministic and generated locally.",
+        "Path evidence remains separate from narrative text.",
+        "Stroke colors and widths provide stable style assertions.",
+        "Fill colors and opacity exercise graphics-state extraction.",
+        "The fixture uses no raster image or external asset.",
+        "PyMuPDF is the only runtime dependency.",
+        "Persisted drawings are inspected after save and reopen.",
+        "Vector geometry supports regression checks without snapshots.",
+    )
+    for index, label in enumerate(labels):
+        page.insert_text((72, 550 + index * 18), label, fontsize=8.5)
+    _save(document, path)
+
+
 def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
     image_info = page.get_image_info(xrefs=True)
+    drawings = page.get_drawings()
     return {
         "page_number": page.number + 1,
         "rotation": page.rotation,
@@ -234,6 +288,8 @@ def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
         "table_count": len(page.find_tables().tables),
         "image_occurrence_count": len(image_info),
         "embedded_image_count": len({item["xref"] for item in image_info if item.get("xref", 0) > 0}),
+        "drawing_count": len(drawings),
+        "drawing_item_count": sum(len(drawing.get("items", ())) for drawing in drawings),
     }
 
 
@@ -249,6 +305,7 @@ def generate_corpus(output_dir: Path) -> dict[str, object]:
         "rotated_cropped": output_dir / "rotated_cropped.pdf",
         "single_column": output_dir / "single_column.pdf",
         "table_heavy": output_dir / "table_heavy.pdf",
+        "vector_heavy": output_dir / "vector_heavy.pdf",
     }
     _write_annotated_form(cases["annotated_form"])
     _write_image_heavy(cases["image_heavy"])
@@ -256,6 +313,7 @@ def generate_corpus(output_dir: Path) -> dict[str, object]:
     _write_mixed_layout(cases["mixed_layout"])
     _write_rotated_cropped(cases["rotated_cropped"])
     _write_table_heavy(cases["table_heavy"])
+    _write_vector_heavy(cases["vector_heavy"])
 
     evidence: list[dict[str, object]] = []
     for case_id, path in sorted(cases.items()):
