@@ -56,7 +56,7 @@ def _save_encrypted(document: pymupdf.Document, path: Path, *, user_password: st
 
 
 def generate_fixtures(output_dir: Path) -> dict[str, object]:
-    """Generate encrypted fixtures and return non-secret machine-readable evidence."""
+    """Generate encrypted fixtures and return credential-free machine-readable evidence."""
 
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -86,11 +86,8 @@ def generate_fixtures(output_dir: Path) -> dict[str, object]:
         "output_dir": str(output_dir),
         "case_count": len(evidence),
         "cases": evidence,
-        "test_password_contract": {
-            "owner_password": _OWNER_PASSWORD,
-            "user_password": _USER_PASSWORD,
-            "production_use_forbidden": True,
-        },
+        "credential_values_included": False,
+        "production_use_forbidden": True,
     }
 
 
