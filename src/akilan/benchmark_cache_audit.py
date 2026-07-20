@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -39,11 +39,11 @@ class BenchmarkCacheAuditReport:
     """Deterministic audit evidence for a benchmark cache root."""
 
     root: str
-    entries: tuple[BenchmarkCacheAuditEntry, ...] = field(default_factory=tuple)
+    entries: tuple[BenchmarkCacheAuditEntry, ...] = ()
 
     @property
     def valid_entries(self) -> int:
-        return sum(entry.valid for entry in self.entries)
+        return sum(1 for entry in self.entries if entry.valid)
 
     @property
     def invalid_entries(self) -> int:
