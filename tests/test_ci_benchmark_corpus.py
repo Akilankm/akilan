@@ -18,18 +18,20 @@ def test_generate_corpus_creates_valid_stable_case_set(tmp_path: Path) -> None:
 
     payload = _MODULE.generate_corpus(output)
 
-    assert payload["case_count"] == 4
+    assert payload["case_count"] == 5
     assert [case["case_id"] for case in payload["cases"]] == [
         "annotated_form",
         "mixed_layout",
         "rotated_cropped",
         "single_column",
+        "table_heavy",
     ]
     assert sorted(path.name for path in output.glob("*.pdf")) == [
         "annotated_form.pdf",
         "mixed_layout.pdf",
         "rotated_cropped.pdf",
         "single_column.pdf",
+        "table_heavy.pdf",
     ]
     for case in payload["cases"]:
         path = Path(case["path"])
@@ -50,12 +52,14 @@ def test_main_writes_machine_readable_evidence(tmp_path: Path, capsys: object) -
 
     assert exit_code == 0
     persisted = json.loads(evidence.read_text(encoding="utf-8"))
-    assert persisted["case_count"] == 4
+    assert persisted["case_count"] == 5
     assert persisted["cases"][0]["case_id"] == "annotated_form"
     assert persisted["cases"][0]["pages"][0]["annotation_count"] == 1
     assert persisted["cases"][0]["pages"][0]["widget_count"] == 1
     assert persisted["cases"][2]["case_id"] == "rotated_cropped"
     assert persisted["cases"][2]["pages"][0]["rotation"] == 90
+    assert persisted["cases"][4]["case_id"] == "table_heavy"
+    assert persisted["cases"][4]["pages"][0]["table_count"] >= 1
     captured = capsys.readouterr()
     printed = json.loads(captured.out)
     assert printed["evidence"] == str(evidence.resolve())
