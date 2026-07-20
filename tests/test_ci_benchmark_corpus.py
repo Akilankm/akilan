@@ -83,7 +83,10 @@ def test_vector_heavy_fixture_preserves_path_and_style_evidence(tmp_path: Path) 
         assert len(drawings) == 4
         assert any(drawing.get("fill") is not None for drawing in drawings)
         assert any(drawing.get("dashes") not in (None, "[] 0") for drawing in drawings)
-        assert any(drawing.get("fill_opacity", 1.0) < 1.0 for drawing in drawings)
+        assert any(
+            isinstance(opacity := drawing.get("fill_opacity"), int | float) and opacity < 1.0
+            for drawing in drawings
+        )
         text = page.get_text()
         assert "Panel B: dashed cubic Bezier curve" in text
         assert "Panel C: closed polygon with translucent fill" in text
