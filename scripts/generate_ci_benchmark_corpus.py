@@ -72,17 +72,48 @@ def _write_mixed_layout(path: Path) -> None:
     _save(document, path)
 
 
+def _write_rotated_cropped(path: Path) -> None:
+    """Write a page whose visible geometry differs from its media box."""
+
+    document = _new_document("Rotated and cropped generated fixture")
+    page = document.new_page(width=_PAGE.width, height=_PAGE.height)
+    page.insert_text((72, 88), "AKILAN Benchmark: Rotated and Cropped", fontsize=17)
+    page.insert_textbox(
+        pymupdf.Rect(72, 125, 520, 330),
+        "This page validates that extraction preserves media-box, crop-box, and rotation evidence.\n\n"
+        "Visible content remains inside the deterministic crop region while the page is presented "
+        "with a ninety-degree clockwise rotation.",
+        fontsize=11,
+        lineheight=1.25,
+    )
+    page.draw_rect(pymupdf.Rect(60, 60, 535, 760), width=1)
+    page.set_cropbox(pymupdf.Rect(36, 54, _PAGE.width - 36, _PAGE.height - 54))
+    page.set_rotation(90)
+    _save(document, path)
+
+
+def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
+    return {
+        "page_number": page.number + 1,
+        "rotation": page.rotation,
+        "media_box": list(page.mediabox),
+        "crop_box": list(page.cropbox),
+    }
+
+
 def generate_corpus(output_dir: Path) -> dict[str, object]:
     """Generate the deterministic CI corpus and return machine-readable evidence."""
 
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     cases = {
-        "single_column": output_dir / "single_column.pdf",
         "mixed_layout": output_dir / "mixed_layout.pdf",
+        "rotated_cropped": output_dir / "rotated_cropped.pdf",
+        "single_column": output_dir / "single_column.pdf",
     }
     _write_single_column(cases["single_column"])
     _write_mixed_layout(cases["mixed_layout"])
+    _write_rotated_cropped(cases["rotated_cropped"])
 
     evidence: list[dict[str, object]] = []
     for case_id, path in sorted(cases.items()):
@@ -93,6 +124,7 @@ def generate_corpus(output_dir: Path) -> dict[str, object]:
                     "path": str(path),
                     "page_count": document.page_count,
                     "size_bytes": path.stat().st_size,
+                    "pages": [_page_evidence(page) for page in document],
                 }
             )
     return {"output_dir": str(output_dir), "case_count": len(evidence), "cases": evidence}
