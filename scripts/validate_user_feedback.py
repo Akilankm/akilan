@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,26 +21,6 @@ class FeedbackContractError(ValueError):
     """Raised when the feedback queue violates its declared contract."""
 
 
-@dataclass(frozen=True, slots=True)
-class FeedbackItem:
-    """Normalized feedback item evidence."""
-
-    identifier: str
-    number: int
-    status: str
-    title: str
-    line: int
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "identifier": self.identifier,
-            "number": self.number,
-            "status": self.status,
-            "title": self.title,
-            "line": self.line,
-        }
-
-
 def validate_feedback(path: Path) -> dict[str, Any]:
     """Validate a feedback queue and return deterministic machine-readable evidence."""
 
@@ -51,7 +30,7 @@ def validate_feedback(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError) as exc:
         raise FeedbackContractError(f"unreadable feedback file: {exc}") from exc
 
-    items: list[FeedbackItem] = []
+    items: list[dict[str, Any]] = []
     seen: dict[str, int] = {}
     in_fenced_block = False
 
@@ -93,18 +72,18 @@ def validate_feedback(path: Path) -> dict[str, Any]:
 
         seen[identifier] = line_number
         items.append(
-            FeedbackItem(
-                identifier=identifier,
-                number=int(number_text),
-                status=status,
-                title=title,
-                line=line_number,
-            )
+            {
+                "identifier": identifier,
+                "number": int(number_text),
+                "status": status,
+                "title": title,
+                "line": line_number,
+            }
         )
 
     status_counts = {status: 0 for status in sorted(_ALLOWED_STATUSES)}
     for item in items:
-        status_counts[item.status] += 1
+        status_counts[item["status"]] += 1
 
     return {
         "contract_version": "user-feedback-contract-v1",
@@ -113,7 +92,7 @@ def validate_feedback(path: Path) -> dict[str, Any]:
         "item_count": len(items),
         "pending_count": status_counts["pending"],
         "status_counts": status_counts,
-        "items": [item.to_dict() for item in items],
+        "items": items,
     }
 
 
