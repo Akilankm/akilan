@@ -140,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Optional maximum peak Python allocation measured by tracemalloc for each case",
     )
+    benchmark.add_argument(
+        "--max-elapsed-seconds",
+        type=float,
+        help="Optional maximum wall-clock elapsed time in seconds for each benchmark case",
+    )
     _add_extraction_arguments(benchmark)
 
     audit_cache = subparsers.add_parser(
@@ -199,6 +204,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
             min_pages_per_second=args.min_pages_per_second,
             max_output_to_source_ratio=args.max_output_to_source_ratio,
             max_peak_python_memory_bytes=args.max_peak_python_memory_bytes,
+            max_elapsed_seconds=args.max_elapsed_seconds,
         )
     except ValueError as exc:
         raise SystemExit(f"invalid benchmark threshold: {exc}") from exc
