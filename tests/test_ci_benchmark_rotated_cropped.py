@@ -14,10 +14,11 @@ def _generate_corpus(output_dir: Path) -> dict[str, object]:
 def test_generated_corpus_includes_rotated_cropped_geometry(tmp_path: Path) -> None:
     payload = _generate_corpus(tmp_path / "corpus")
 
-    assert payload["case_count"] == 5
+    assert payload["case_count"] == 6
     cases = {case["case_id"]: case for case in payload["cases"]}
     assert sorted(cases) == [
         "annotated_form",
+        "image_heavy",
         "mixed_layout",
         "rotated_cropped",
         "single_column",
