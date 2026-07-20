@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -45,8 +46,8 @@ def validate_benchmark_cache_entry(
 
     A reusable benchmark cache entry must contain a supported marker contract, a
     valid request identity, a complete canonical artifact directory, and cached
-    metrics that agree with the persisted document identity. The function is
-    read-only and never repairs or removes cache state.
+    metrics that agree with the persisted document identity and canonical content.
+    The function is read-only and never repairs or removes cache state.
     """
 
     root = Path(artifact_dir).expanduser().resolve()
@@ -91,12 +92,7 @@ def _validate_marker_contract(
 ) -> None:
     format_version = marker.get("cache_format_version")
     if isinstance(format_version, bool) or not isinstance(format_version, int):
-        violations.append(
-            BenchmarkCacheViolation(
-                "$.cache.cache_format_version",
-                "must be an integer",
-            )
-        )
+        violations.append(BenchmarkCacheViolation("$.cache.cache_format_version", "must be an integer"))
     elif format_version != BENCHMARK_CACHE_FORMAT_VERSION:
         violations.append(
             BenchmarkCacheViolation(
@@ -163,8 +159,7 @@ def _validate_metric_consistency(
 ) -> None:
     source = document.get("source")
     document_sha = source.get("sha256") if isinstance(source, Mapping) else None
-    cached_sha = metrics.get("source_sha256")
-    if cached_sha != document_sha:
+    if metrics.get("source_sha256") != document_sha:
         violations.append(
             BenchmarkCacheViolation(
                 "$.cache.metrics.source_sha256",
@@ -181,6 +176,25 @@ def _validate_metric_consistency(
                 "must match the number of pages in document.json",
             )
         )
+
+    persisted_fingerprint = _canonical_mapping_fingerprint(document)
+    if metrics.get("artifact_fingerprint") != persisted_fingerprint:
+        violations.append(
+            BenchmarkCacheViolation(
+                "$.cache.metrics.artifact_fingerprint",
+                "must match the canonical fingerprint of document.json",
+            )
+        )
+
+
+def _canonical_mapping_fingerprint(document: Mapping[str, Any]) -> str:
+    payload = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _is_sha256(value: Any) -> bool:
