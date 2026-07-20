@@ -20,6 +20,7 @@ class BenchmarkThresholds:
     min_pages_per_second: float = 0.0
     max_output_to_source_ratio: float | None = None
     max_peak_python_memory_bytes: int | None = None
+    max_elapsed_seconds: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("min_success_rate", "min_ordered_element_ratio"):
@@ -36,6 +37,14 @@ class BenchmarkThresholds:
             isinstance(maximum_memory, bool) or not isinstance(maximum_memory, int) or maximum_memory < 0
         ):
             raise ValueError("max_peak_python_memory_bytes must be a non-negative integer when provided")
+        maximum_elapsed = self.max_elapsed_seconds
+        if maximum_elapsed is not None and (
+            isinstance(maximum_elapsed, bool)
+            or not isinstance(maximum_elapsed, (int, float))
+            or not math.isfinite(maximum_elapsed)
+            or maximum_elapsed < 0.0
+        ):
+            raise ValueError("max_elapsed_seconds must be a finite non-negative number when provided")
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +133,37 @@ def evaluate_corpus(
                 )
             )
             continue
+
+        elapsed = case.elapsed_seconds
+        if (
+            isinstance(elapsed, bool)
+            or not isinstance(elapsed, (int, float))
+            or not math.isfinite(elapsed)
+            or elapsed < 0.0
+        ):
+            case_violations.append(
+                BenchmarkViolation(
+                    source=case.source,
+                    metric="elapsed_seconds",
+                    expected="finite non-negative number",
+                    actual=str(elapsed) if isinstance(elapsed, float) and not math.isfinite(elapsed) else elapsed,
+                    message="elapsed-time evidence is invalid",
+                    rule_id="benchmark-elapsed-time-evidence-valid-v1",
+                )
+            )
+        else:
+            maximum_elapsed = effective.max_elapsed_seconds
+            if maximum_elapsed is not None and elapsed > maximum_elapsed:
+                case_violations.append(
+                    BenchmarkViolation(
+                        source=case.source,
+                        metric="elapsed_seconds",
+                        expected=f"<= {maximum_elapsed:.6f}",
+                        actual=elapsed,
+                        message="benchmark case elapsed time exceeds the allowed threshold",
+                        rule_id="benchmark-elapsed-time-v1",
+                    )
+                )
 
         if case.metrics is None:
             case_violations.append(
