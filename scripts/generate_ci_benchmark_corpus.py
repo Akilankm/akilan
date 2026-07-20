@@ -169,6 +169,12 @@ def _write_table_heavy(path: Path) -> None:
         "Cell text provides predictable assertions for regression testing.",
         "The fixture contains no third-party or copyrighted source material.",
         "PyMuPDF is the only runtime dependency used to construct this page.",
+        "Rows remain aligned to deterministic horizontal boundaries.",
+        "Columns retain fixed widths for geometry comparison.",
+        "Numeric values exercise mixed textual and decimal cell content.",
+        "The external narrative remains available to reading-order analysis.",
+        "Persisted evidence is reopened before benchmark metadata is recorded.",
+        "Regression tests inspect both page evidence and extracted cells.",
     )
     for index, note in enumerate(notes):
         page.insert_text((72, 410 + index * 24), note, fontsize=9)
