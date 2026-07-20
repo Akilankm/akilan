@@ -18,13 +18,22 @@ def test_generate_corpus_creates_valid_stable_case_set(tmp_path: Path) -> None:
 
     payload = _MODULE.generate_corpus(output)
 
-    assert payload["case_count"] == 2
-    assert [case["case_id"] for case in payload["cases"]] == ["mixed_layout", "single_column"]
-    assert sorted(path.name for path in output.glob("*.pdf")) == ["mixed_layout.pdf", "single_column.pdf"]
+    assert payload["case_count"] == 3
+    assert [case["case_id"] for case in payload["cases"]] == [
+        "mixed_layout",
+        "rotated_cropped",
+        "single_column",
+    ]
+    assert sorted(path.name for path in output.glob("*.pdf")) == [
+        "mixed_layout.pdf",
+        "rotated_cropped.pdf",
+        "single_column.pdf",
+    ]
     for case in payload["cases"]:
         path = Path(case["path"])
         assert path.is_file()
         assert case["size_bytes"] == path.stat().st_size
+        assert len(case["pages"]) == case["page_count"]
         with pymupdf.open(path) as document:
             assert document.is_pdf
             assert document.page_count == case["page_count"] == 1
@@ -39,7 +48,9 @@ def test_main_writes_machine_readable_evidence(tmp_path: Path, capsys: object) -
 
     assert exit_code == 0
     persisted = json.loads(evidence.read_text(encoding="utf-8"))
-    assert persisted["case_count"] == 2
+    assert persisted["case_count"] == 3
+    assert persisted["cases"][1]["case_id"] == "rotated_cropped"
+    assert persisted["cases"][1]["pages"][0]["rotation"] == 90
     captured = capsys.readouterr()
     printed = json.loads(captured.out)
     assert printed["evidence"] == str(evidence.resolve())
