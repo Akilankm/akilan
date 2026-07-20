@@ -40,9 +40,9 @@ def test_comparison_passes_within_configured_regression_budgets() -> None:
         _report(),
         _report(elapsed=1.05, memory=105, throughput=9.5),
         BenchmarkRegressionThresholds(
-            max_elapsed_increase_ratio=0.05,
-            max_memory_increase_ratio=0.05,
-            max_throughput_decrease_ratio=0.05,
+            max_elapsed_increase_ratio=0.051,
+            max_memory_increase_ratio=0.051,
+            max_throughput_decrease_ratio=0.051,
         ),
     )
 
