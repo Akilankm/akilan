@@ -135,6 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--min-ordered-element-ratio", type=float, default=1.0)
     benchmark.add_argument("--min-pages-per-second", type=float, default=0.0)
     benchmark.add_argument("--max-output-to-source-ratio", type=float)
+    benchmark.add_argument(
+        "--max-peak-python-memory-bytes",
+        type=int,
+        help="Optional maximum peak Python allocation measured by tracemalloc for each case",
+    )
     _add_extraction_arguments(benchmark)
 
     audit_cache = subparsers.add_parser(
@@ -193,6 +198,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
             min_ordered_element_ratio=args.min_ordered_element_ratio,
             min_pages_per_second=args.min_pages_per_second,
             max_output_to_source_ratio=args.max_output_to_source_ratio,
+            max_peak_python_memory_bytes=args.max_peak_python_memory_bytes,
         )
     except ValueError as exc:
         raise SystemExit(f"invalid benchmark threshold: {exc}") from exc
