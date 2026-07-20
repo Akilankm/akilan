@@ -34,7 +34,7 @@ def test_parse_page_selection_accepts_canonical_expressions(
         ("2,1", "ascending source order"),
         ("1-2-3", "at most one range separator"),
         ("one", "non-integer page"),
-        ("１", "non-integer page"),
+        ("\uff11", "non-integer page"),
     ],
 )
 def test_parse_page_selection_rejects_ambiguous_or_invalid_input(
