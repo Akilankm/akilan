@@ -92,12 +92,40 @@ def _write_rotated_cropped(path: Path) -> None:
     _save(document, path)
 
 
+def _write_annotated_form(path: Path) -> None:
+    """Write deterministic annotation and AcroForm widget evidence."""
+
+    document = _new_document("Annotated form generated fixture")
+    page = document.new_page(width=_PAGE.width, height=_PAGE.height)
+    page.insert_text((72, 72), "AKILAN Benchmark: Annotated Form", fontsize=18)
+    page.insert_textbox(
+        pymupdf.Rect(72, 105, 520, 170),
+        "This generated page validates preservation of review annotations and interactive form fields.",
+        fontsize=11,
+    )
+    page.add_text_annot((72, 210), "Generated review note for deterministic annotation extraction.")
+    page.insert_text((72, 285), "Reviewer name", fontsize=11)
+    page.draw_rect(pymupdf.Rect(170, 260, 430, 300), width=0.8)
+
+    widget = pymupdf.Widget()
+    widget.field_name = "reviewer_name"
+    widget.field_label = "Reviewer name"
+    widget.field_type = pymupdf.PDF_WIDGET_TYPE_TEXT
+    widget.field_value = "AKILAN"
+    widget.rect = pymupdf.Rect(170, 260, 430, 300)
+    widget.text_fontsize = 11
+    page.add_widget(widget)
+    _save(document, path)
+
+
 def _page_evidence(page: pymupdf.Page) -> dict[str, object]:
     return {
         "page_number": page.number + 1,
         "rotation": page.rotation,
         "media_box": list(page.mediabox),
         "crop_box": list(page.cropbox),
+        "annotation_count": sum(1 for _ in (page.annots() or ())),
+        "widget_count": sum(1 for _ in (page.widgets() or ())),
     }
 
 
@@ -107,10 +135,12 @@ def generate_corpus(output_dir: Path) -> dict[str, object]:
     output_dir = output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     cases = {
+        "annotated_form": output_dir / "annotated_form.pdf",
         "mixed_layout": output_dir / "mixed_layout.pdf",
         "rotated_cropped": output_dir / "rotated_cropped.pdf",
         "single_column": output_dir / "single_column.pdf",
     }
+    _write_annotated_form(cases["annotated_form"])
     _write_single_column(cases["single_column"])
     _write_mixed_layout(cases["mixed_layout"])
     _write_rotated_cropped(cases["rotated_cropped"])
