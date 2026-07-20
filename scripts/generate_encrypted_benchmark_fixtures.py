@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate copyright-free encrypted PDF fixtures for extraction regression tests."""
+"""Generate a copyright-free encrypted PDF fixture for extraction regression tests."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ _USER_PASSWORD = "akilan-user"
 _PAGE = pymupdf.paper_rect("a4")
 
 
-def _new_document(title: str) -> pymupdf.Document:
+def _new_document() -> pymupdf.Document:
     document = pymupdf.open()
     document.set_metadata(
         {
@@ -22,11 +22,11 @@ def _new_document(title: str) -> pymupdf.Document:
             "creator": "AKILAN encrypted benchmark fixture generator",
             "producer": "PyMuPDF",
             "subject": "Generated encrypted PDF regression fixture",
-            "title": title,
+            "title": "AKILAN Benchmark: Encrypted User Password",
         }
     )
     page = document.new_page(width=_PAGE.width, height=_PAGE.height)
-    page.insert_text((72, 72), title, fontsize=18)
+    page.insert_text((72, 72), "AKILAN Benchmark: Encrypted User Password", fontsize=18)
     page.insert_textbox(
         pymupdf.Rect(72, 105, 520, 260),
         "This generated document validates explicit encrypted-PDF handling, password rejection, "
@@ -40,8 +40,13 @@ def _new_document(title: str) -> pymupdf.Document:
     return document
 
 
-def _save_encrypted(document: pymupdf.Document, path: Path, *, user_password: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def generate_fixture(output_dir: Path) -> dict[str, object]:
+    """Generate one password-required fixture and return credential-free evidence."""
+
+    output_dir = output_dir.expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "encrypted_user_password.pdf"
+    document = _new_document()
     document.save(
         path,
         garbage=4,
@@ -49,43 +54,26 @@ def _save_encrypted(document: pymupdf.Document, path: Path, *, user_password: st
         clean=True,
         encryption=pymupdf.PDF_ENCRYPT_AES_256,
         owner_pw=_OWNER_PASSWORD,
-        user_pw=user_password,
+        user_pw=_USER_PASSWORD,
         permissions=pymupdf.PDF_PERM_ACCESSIBILITY | pymupdf.PDF_PERM_PRINT,
     )
     document.close()
 
-
-def generate_fixtures(output_dir: Path) -> dict[str, object]:
-    """Generate encrypted fixtures and return credential-free machine-readable evidence."""
-
-    output_dir = output_dir.expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    cases = (
-        ("owner_only", output_dir / "encrypted_owner_only.pdf", ""),
-        ("user_password", output_dir / "encrypted_user_password.pdf", _USER_PASSWORD),
-    )
-
-    evidence: list[dict[str, object]] = []
-    for case_id, path, user_password in cases:
-        document = _new_document(f"AKILAN Benchmark: Encrypted {case_id.replace('_', ' ').title()}")
-        _save_encrypted(document, path, user_password=user_password)
-        with pymupdf.open(path) as reopened:
-            evidence.append(
-                {
-                    "case_id": case_id,
-                    "path": str(path),
-                    "size_bytes": path.stat().st_size,
-                    "is_pdf": bool(reopened.is_pdf),
-                    "is_encrypted": bool(reopened.is_encrypted),
-                    "needs_password": bool(reopened.needs_pass),
-                    "page_count_available_before_authentication": reopened.page_count,
-                }
-            )
+    with pymupdf.open(path) as reopened:
+        case = {
+            "case_id": "user_password",
+            "path": str(path),
+            "size_bytes": path.stat().st_size,
+            "is_pdf": bool(reopened.is_pdf),
+            "is_encrypted": bool(reopened.is_encrypted),
+            "needs_password": bool(reopened.needs_pass),
+            "page_count_available_before_authentication": reopened.page_count,
+        }
 
     return {
         "output_dir": str(output_dir),
-        "case_count": len(evidence),
-        "cases": evidence,
+        "case_count": 1,
+        "cases": [case],
         "credential_values_included": False,
         "production_use_forbidden": True,
     }
@@ -97,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--evidence", type=Path, help="Optional JSON evidence output path")
     args = parser.parse_args(argv)
 
-    payload = generate_fixtures(args.output_dir)
+    payload = generate_fixture(args.output_dir)
     if args.evidence is not None:
         evidence_path = args.evidence.expanduser().resolve()
         evidence_path.parent.mkdir(parents=True, exist_ok=True)
