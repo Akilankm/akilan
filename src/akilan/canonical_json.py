@@ -42,7 +42,7 @@ def is_json_compatible(value: Any) -> bool:
     non-finite floats, bytes, sets, and arbitrary objects.
     """
 
-    if value is None or isinstance(value, (str, bool, int)):
+    if value is None or isinstance(value, str | bool | int):
         return True
     if isinstance(value, float):
         return math.isfinite(value)
@@ -51,6 +51,6 @@ def is_json_compatible(value: Any) -> bool:
             isinstance(key, str) and is_json_compatible(item)
             for key, item in value.items()
         )
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return all(is_json_compatible(item) for item in value)
     return False
