@@ -10,6 +10,7 @@ from pathlib import Path
 from .artifact_loader import load_artifact_directory
 from .benchmark import run_corpus, write_corpus_report
 from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
+from .benchmark_cache_audit import audit_benchmark_cache, write_benchmark_cache_audit_report
 from .config import ExtractionConfig
 from .extraction import PDFArtifactBuilder
 from .report_io import write_json_report
@@ -119,6 +120,17 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--max-output-to-source-ratio", type=float)
     _add_extraction_arguments(benchmark)
 
+    audit_cache = subparsers.add_parser(
+        "audit-benchmark-cache",
+        help="Audit every persisted benchmark cache entry and fail on integrity violations",
+    )
+    audit_cache.add_argument("root", type=Path, help="Benchmark artifact/cache root to audit")
+    audit_cache.add_argument(
+        "--report",
+        type=Path,
+        help="Optional path for the deterministic machine-readable audit report",
+    )
+
     validate = subparsers.add_parser(
         "validate",
         help="Validate a persisted artifact directory and report actionable violations",
@@ -207,6 +219,33 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     return 0 if acceptance.passed else 1
 
 
+def _run_audit_benchmark_cache(args: argparse.Namespace) -> int:
+    root = args.root.expanduser().resolve()
+    try:
+        report = audit_benchmark_cache(root)
+    except NotADirectoryError:
+        payload = {
+            "root": str(root),
+            "summary": {"total": 0, "valid": 0, "invalid": 0, "passed": False},
+            "entries": [],
+            "error": "benchmark cache root is not a directory",
+        }
+        print(json.dumps(payload, indent=2), file=sys.stderr)
+        return 1
+
+    report_path: Path | None = None
+    if args.report is not None:
+        report_path = write_benchmark_cache_audit_report(report, args.report)
+
+    payload = {
+        **report.to_dict(),
+        "report": str(report_path) if report_path is not None else None,
+    }
+    stream = sys.stdout if report.passed else sys.stderr
+    print(json.dumps(payload, indent=2, sort_keys=True), file=stream)
+    return 0 if report.passed else 1
+
+
 def _run_validate(args: argparse.Namespace) -> int:
     artifact_dir = args.artifact.expanduser().resolve()
     try:
@@ -251,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_extract(args)
     if args.command == "benchmark":
         return _run_benchmark(args)
+    if args.command == "audit-benchmark-cache":
+        return _run_audit_benchmark_cache(args)
     if args.command == "validate":
         return _run_validate(args)
     return 2
