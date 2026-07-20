@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 from akilan.canonical_json import (
     canonical_json_bytes,
     canonical_json_fingerprint,
@@ -28,3 +30,19 @@ def test_json_compatibility_rejects_ambiguous_or_unsupported_values() -> None:
     assert is_json_compatible({1: "non-string-key"}) is False
     assert is_json_compatible({"bytes": b"value"}) is False
     assert is_json_compatible({"set": {"a", "b"}}) is False
+    assert is_json_compatible({"nan": float("nan")}) is False
+    assert is_json_compatible({"infinity": float("inf")}) is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {1: "non-string-key"},
+        {"bytes": b"value"},
+        {"nan": float("nan")},
+        {"infinity": float("inf")},
+    ],
+)
+def test_canonical_serialization_fails_closed_for_unsupported_values(value: object) -> None:
+    with pytest.raises(TypeError, match="canonical JSON contract"):
+        canonical_json_bytes(value)
