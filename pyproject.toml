@@ -45,6 +45,7 @@ dev = [
 
 [project.scripts]
 akilan = "akilan.cli:main"
+akilan-corpus = "akilan.corpus_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
