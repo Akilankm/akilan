@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from akilan.pdf_preflight_cli import main
 
@@ -29,7 +30,7 @@ def _write_encrypted_pdf(path: Path, password: str) -> None:
 
 def test_preflight_cli_accepts_pdf_and_persists_report(
     tmp_path: Path,
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = tmp_path / "valid.pdf"
     report_path = tmp_path / "reports" / "preflight.json"
@@ -37,7 +38,7 @@ def test_preflight_cli_accepts_pdf_and_persists_report(
 
     exit_code = main([str(source), "--report", str(report_path)])
 
-    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
     payload = json.loads(captured.out)
     persisted = json.loads(report_path.read_text(encoding="utf-8"))
     assert exit_code == 0
@@ -52,13 +53,13 @@ def test_preflight_cli_accepts_pdf_and_persists_report(
 
 def test_preflight_cli_fails_closed_on_missing_source(
     tmp_path: Path,
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = tmp_path / "missing.pdf"
 
     exit_code = main([str(source)])
 
-    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
     payload = json.loads(captured.err)
     assert exit_code == 1
     assert captured.out == ""
@@ -68,7 +69,7 @@ def test_preflight_cli_fails_closed_on_missing_source(
 
 def test_preflight_cli_reads_password_from_file_without_exposing_it(
     tmp_path: Path,
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = tmp_path / "encrypted.pdf"
     password_file = tmp_path / "password.txt"
@@ -78,7 +79,7 @@ def test_preflight_cli_reads_password_from_file_without_exposing_it(
 
     exit_code = main([str(source), "--password-file", str(password_file)])
 
-    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert exit_code == 0
     assert captured.err == ""
