@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -41,9 +42,11 @@ def valid_artifact() -> dict[str, object]:
     }
 
 
-def write_artifact(directory: Path, artifact: object) -> None:
+def write_artifact(directory: Path, artifact: object) -> Path:
     directory.mkdir(parents=True)
-    (directory / "document.json").write_text(json.dumps(artifact), encoding="utf-8")
+    document = directory / "document.json"
+    document.write_text(json.dumps(artifact), encoding="utf-8")
+    return document
 
 
 def write_manifest(path: Path, payload: object) -> None:
@@ -51,8 +54,8 @@ def write_manifest(path: Path, payload: object) -> None:
 
 
 def test_valid_manifest_is_accepted_in_identifier_order(tmp_path, capsys) -> None:
-    write_artifact(tmp_path / "alpha", valid_artifact())
-    write_artifact(tmp_path / "zeta", valid_artifact())
+    alpha = write_artifact(tmp_path / "alpha", valid_artifact())
+    zeta = write_artifact(tmp_path / "zeta", valid_artifact())
     manifest = tmp_path / "artifacts.json"
     write_manifest(manifest, {"zeta": "zeta", "alpha": "alpha"})
     report = tmp_path / "intake.json"
@@ -65,8 +68,28 @@ def test_valid_manifest_is_accepted_in_identifier_order(tmp_path, capsys) -> Non
     assert payload["accepted"] is True
     assert payload["accepted_count"] == 2
     assert [entry["artifact_id"] for entry in payload["entries"]] == ["alpha", "zeta"]
+    assert payload["entries"][0]["document_sha256"] == hashlib.sha256(alpha.read_bytes()).hexdigest()
+    assert payload["entries"][0]["document_size_bytes"] == alpha.stat().st_size
+    assert payload["entries"][1]["document_sha256"] == hashlib.sha256(zeta.read_bytes()).hexdigest()
     assert len(payload["fingerprint"]) == 64
     assert persisted["fingerprint"] == payload["fingerprint"]
+
+
+def test_fingerprint_changes_when_document_bytes_change(tmp_path, capsys) -> None:
+    document = write_artifact(tmp_path / "artifact", valid_artifact())
+    manifest = tmp_path / "artifacts.json"
+    write_manifest(manifest, {"artifact": "artifact"})
+
+    assert main([str(manifest)]) == 0
+    first = json.loads(capsys.readouterr().out)
+    document.write_text(document.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    assert main([str(manifest)]) == 0
+    second = json.loads(capsys.readouterr().out)
+
+    assert first["entries"][0]["accepted"] is True
+    assert second["entries"][0]["accepted"] is True
+    assert first["entries"][0]["document_sha256"] != second["entries"][0]["document_sha256"]
+    assert first["fingerprint"] != second["fingerprint"]
 
 
 def test_missing_member_rejects_complete_manifest_without_subset_acceptance(tmp_path, capsys) -> None:
@@ -84,6 +107,8 @@ def test_missing_member_rejects_complete_manifest_without_subset_acceptance(tmp_
     assert payload["rejected_count"] == 1
     missing = next(entry for entry in payload["entries"] if entry["artifact_id"] == "missing")
     assert missing["status"] == "missing"
+    assert missing["document_sha256"] is None
+    assert missing["document_size_bytes"] is None
 
 
 def test_incompatible_member_preserves_actionable_evidence(tmp_path, capsys) -> None:
@@ -98,6 +123,7 @@ def test_incompatible_member_preserves_actionable_evidence(tmp_path, capsys) -> 
     payload = json.loads(capsys.readouterr().err)
     assert exit_code == 1
     assert payload["entries"][0]["compatibility"]["status"] == "unsupported_major"
+    assert len(payload["entries"][0]["document_sha256"]) == 64
 
 
 def test_empty_and_invalid_manifests_fail_closed(tmp_path, capsys) -> None:
