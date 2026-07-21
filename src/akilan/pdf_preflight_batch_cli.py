@@ -18,19 +18,19 @@ def _load_password_map(path: Path | None) -> dict[str, str] | None:
     try:
         payload: Any = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise SystemExit(f"cannot read password map {path}: {exc}") from exc
+        raise ValueError(f"cannot read password map {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"invalid JSON password map {path}: {exc}") from exc
+        raise ValueError(f"invalid JSON password map {path}: {exc}") from exc
 
     if not isinstance(payload, dict):
-        raise SystemExit("password map must be a JSON object of source paths to passwords")
+        raise ValueError("password map must be a JSON object of source paths to passwords")
 
     passwords: dict[str, str] = {}
     for key, value in payload.items():
         if not isinstance(key, str) or not key:
-            raise SystemExit("password map keys must be non-empty strings")
+            raise ValueError("password map keys must be non-empty strings")
         if not isinstance(value, str) or not value:
-            raise SystemExit(f"password for {key!r} must be a non-empty string")
+            raise ValueError(f"password for {key!r} must be a non-empty string")
         passwords[key] = value
     return passwords
 
@@ -60,8 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    passwords = _load_password_map(args.password_map)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        passwords = _load_password_map(args.password_map)
+    except ValueError as exc:
+        parser.error(str(exc))
     report = preflight_pdf_batch(
         args.root,
         recursive=not args.no_recursive,
