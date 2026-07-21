@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections.abc import Mapping
@@ -78,6 +79,23 @@ def _resolve_manifest_source(manifest_path: Path, source: str) -> Path:
     return _resolve_document_path(candidate)
 
 
+def _document_integrity(path: Path) -> dict[str, Any]:
+    """Return immutable byte identity for a readable regular document file."""
+
+    if not path.is_file():
+        return {"document_sha256": None, "document_size_bytes": None}
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+                size += len(chunk)
+    except OSError:
+        return {"document_sha256": None, "document_size_bytes": None}
+    return {"document_sha256": digest.hexdigest(), "document_size_bytes": size}
+
+
 def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
     invalid_ids = [artifact_id for artifact_id in manifest if not isinstance(artifact_id, str) or not artifact_id]
     invalid_sources = [artifact_id for artifact_id, source in manifest.items() if not isinstance(source, str) or not source]
@@ -89,19 +107,29 @@ def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[s
     artifacts: dict[str, Mapping[str, Any]] = {}
     source_failures: dict[str, dict[str, Any]] = {}
     source_paths: dict[str, str] = {}
+    source_integrity: dict[str, dict[str, Any]] = {}
     for artifact_id in sorted(manifest):
         source_path = _resolve_manifest_source(manifest_path, manifest[artifact_id])
         source_paths[artifact_id] = str(source_path)
+        source_integrity[artifact_id] = _document_integrity(source_path)
         artifact, failure = _load_artifact(source_path)
         if failure is not None:
-            source_failures[artifact_id] = {"artifact_id": artifact_id, **failure}
+            source_failures[artifact_id] = {
+                "artifact_id": artifact_id,
+                **failure,
+                **source_integrity[artifact_id],
+            }
         else:
             assert artifact is not None
             artifacts[artifact_id] = artifact
 
     assessment = assess_artifact_batch_intake(artifacts)
     assessed_entries = {
-        entry.artifact_id: {**entry.to_dict(), "source_path": source_paths[entry.artifact_id]}
+        entry.artifact_id: {
+            **entry.to_dict(),
+            "source_path": source_paths[entry.artifact_id],
+            **source_integrity[entry.artifact_id],
+        }
         for entry in assessment.entries
     }
     entries = [
