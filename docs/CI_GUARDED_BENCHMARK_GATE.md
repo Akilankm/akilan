@@ -30,4 +30,4 @@ The existing `ci-benchmark-evidence` workflow artifact uploads the guard report 
 
 The guarded command must complete successfully before artifact validation runs. If preflight rejects any selected PDF, no benchmark output root, corpus report, acceptance report, or cache marker is created. The optional guard report remains available as the concise failure explanation.
 
-The workflow contract is regression-tested in `tests/test_ci_guarded_benchmark_contract.py` so CI cannot silently return to the unguarded command or stop persisting source evidence.
+A dedicated CI step parses the persisted guard report and fails unless the corpus is accepted, every discovered source is accepted, no source is rejected, and the deterministic fingerprint is present. This locks the source-guard evidence contract without introducing another runtime or development dependency.
