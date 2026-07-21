@@ -2,6 +2,7 @@
 
 from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
+from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
 from .benchmark_acceptance import (
@@ -68,6 +69,7 @@ __all__ = [
     "ArtifactCacheIdentity",
     "ArtifactCacheResolution",
     "ArtifactCacheValidation",
+    "ArtifactIntakeReport",
     "ArtifactOperationProfile",
     "ArtifactSchemaError",
     "BBox",
@@ -94,6 +96,7 @@ __all__ = [
     "SchemaVersion",
     "SchemaViolation",
     "__version__",
+    "assess_artifact_intake",
     "assess_schema_compatibility",
     "build_artifact",
     "build_artifact_cache_identity",

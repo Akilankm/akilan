@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from akilan.artifact_intake import assess_artifact_intake
+from akilan import ArtifactIntakeReport, assess_artifact_intake
 
 
 def valid_artifact() -> dict[str, object]:
@@ -38,9 +38,10 @@ def valid_artifact() -> dict[str, object]:
     }
 
 
-def test_valid_artifact_is_accepted() -> None:
+def test_valid_artifact_is_accepted_through_public_api() -> None:
     report = assess_artifact_intake(valid_artifact())
 
+    assert isinstance(report, ArtifactIntakeReport)
     assert report.accepted is True
     assert report.violations == ()
     assert report.to_dict()["compatibility"]["status"] == "compatible"

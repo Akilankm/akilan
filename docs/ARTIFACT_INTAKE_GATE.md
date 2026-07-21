@@ -3,12 +3,14 @@
 `assess_artifact_intake()` combines schema-version compatibility assessment with structural artifact validation at one read-only consumption boundary.
 
 ```python
-from akilan.artifact_intake import assess_artifact_intake
+from akilan import ArtifactIntakeReport, assess_artifact_intake
 
-report = assess_artifact_intake(artifact)
+report: ArtifactIntakeReport = assess_artifact_intake(artifact)
 if not report.accepted:
     raise RuntimeError(report.to_dict())
 ```
+
+Both `ArtifactIntakeReport` and `assess_artifact_intake` are part of the package-root public API. Consumers should prefer `from akilan import ...` so supported interfaces are explicit and internal module layout can evolve independently.
 
 ## Decision contract
 
