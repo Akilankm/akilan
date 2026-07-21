@@ -90,9 +90,15 @@ def test_batch_preflight_cli_authenticates_without_disclosing_passwords(
     assert "owner-secret" not in captured.out
 
 
-def test_batch_preflight_cli_rejects_invalid_password_map(tmp_path: Path) -> None:
+def test_batch_preflight_cli_rejects_invalid_password_map(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     password_map = tmp_path / "passwords.json"
     password_map.write_text("[]", encoding="utf-8")
 
-    with pytest.raises(SystemExit, match="password map must be a JSON object"):
+    with pytest.raises(SystemExit) as exc_info:
         main([str(tmp_path), "--password-map", str(password_map)])
+
+    assert exc_info.value.code == 2
+    assert "password map must be a JSON object" in capsys.readouterr().err
