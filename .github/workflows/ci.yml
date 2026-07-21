@@ -56,6 +56,21 @@ jobs:
             --guard-report artifacts/ci-benchmark/source-guard.json \
             --min-ordered-element-ratio 0.75 \
             --no-cache
+      - name: Validate guarded benchmark evidence
+        if: matrix.python-version == '3.12'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("artifacts/ci-benchmark/source-guard.json")
+          payload = json.loads(report.read_text(encoding="utf-8"))
+          assert payload["accepted"] is True
+          assert payload["total_count"] > 0
+          assert payload["accepted_count"] == payload["total_count"]
+          assert payload["rejected_count"] == 0
+          assert len(payload["fingerprint"]) == 64
+          PY
       - name: Validate generated artifacts
         if: matrix.python-version == '3.12'
         run: |
