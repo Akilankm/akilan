@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .canonical_json import canonical_json_fingerprint
 from .pdf_preflight import PDFPreflightReport, preflight_pdf
