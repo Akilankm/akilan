@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -77,6 +79,57 @@ def _rejected(root: Path, status: str, message: str) -> ArtifactDirectoryIntegri
     )
 
 
+def _same_file_snapshot(left: os.stat_result, right: os.stat_result) -> bool:
+    """Return whether two stat results describe the same unchanged regular file."""
+
+    return (
+        stat.S_ISREG(left.st_mode)
+        and stat.S_ISREG(right.st_mode)
+        and left.st_dev == right.st_dev
+        and left.st_ino == right.st_ino
+        and left.st_size == right.st_size
+        and left.st_mtime_ns == right.st_mtime_ns
+    )
+
+
+def _read_stable_regular_file(path: Path) -> bytes:
+    """Read one regular file while detecting symlink swaps and concurrent mutation."""
+
+    before_path = path.lstat()
+    if not stat.S_ISREG(before_path.st_mode):
+        raise ValueError("not_regular")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    descriptor = os.open(path, flags)
+    try:
+        before_fd = os.fstat(descriptor)
+        if not _same_file_snapshot(before_path, before_fd):
+            raise RuntimeError("changed_during_read")
+
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+
+        after_fd = os.fstat(descriptor)
+        after_path = path.lstat()
+        if not _same_file_snapshot(before_fd, after_fd) or not _same_file_snapshot(
+            before_fd,
+            after_path,
+        ):
+            raise RuntimeError("changed_during_read")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
 def assess_artifact_directory_integrity(
     artifact_root: str | Path,
 ) -> ArtifactDirectoryIntegrityReport:
@@ -84,7 +137,8 @@ def assess_artifact_directory_integrity(
 
     The canonical ``document.json`` file is required. Paths are normalized to relative
     POSIX form and emitted lexicographically. Any symlink, unreadable file, missing
-    canonical document, or source-type mismatch rejects the complete directory.
+    canonical document, source-type mismatch, or concurrent mutation rejects the
+    complete directory.
     """
 
     candidate = Path(artifact_root).expanduser()
@@ -130,7 +184,19 @@ def assess_artifact_directory_integrity(
                 "artifact directory contains a non-regular entry",
             )
         try:
-            raw = path.read_bytes()
+            raw = _read_stable_regular_file(path)
+        except ValueError:
+            return _rejected(
+                root,
+                "unsupported_entry",
+                "artifact directory contains a non-regular entry",
+            )
+        except RuntimeError:
+            return _rejected(
+                root,
+                "changed_during_read",
+                "artifact directory changed while integrity evidence was generated",
+            )
         except OSError:
             return _rejected(
                 root,
