@@ -13,6 +13,37 @@ from .pdf_preflight import preflight_pdf
 from .report_io import write_json_report
 
 
+def _load_password_map(path: Path | None) -> dict[str, str] | None:
+    if path is None:
+        return None
+    try:
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"cannot read password map {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON password map {path}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("password map must be a JSON object of source paths to passwords")
+
+    passwords: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("password map keys must be non-empty strings")
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"password for {key!r} must be a non-empty string")
+        passwords[key] = value
+    return passwords
+
+
+def _password_for_source(source: Path, root: Path, passwords: dict[str, str] | None) -> str | None:
+    if passwords is None:
+        return None
+    absolute_key = str(source)
+    relative_key = source.relative_to(root).as_posix()
+    return passwords.get(absolute_key, passwords.get(relative_key))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="akilan-benchmark-preflight",
@@ -25,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Recursive glob pattern relative to the corpus directory",
     )
     parser.add_argument(
+        "--password-map",
+        type=Path,
+        help="UTF-8 JSON object mapping absolute or corpus-relative PDF paths to passwords",
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         help="Optional path for deterministic machine-readable preflight evidence",
@@ -32,13 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_report(corpus: Path, pattern: str) -> dict[str, Any]:
+def _build_report(
+    corpus: Path,
+    pattern: str,
+    *,
+    passwords: dict[str, str] | None = None,
+) -> dict[str, Any]:
     root = corpus.expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"benchmark corpus directory does not exist: {root}")
 
     sources = tuple(sorted((path.resolve() for path in root.rglob(pattern) if path.is_file()), key=str))
-    reports = [preflight_pdf(path) for path in sources]
+    reports = [
+        preflight_pdf(path, password=_password_for_source(path, root, passwords))
+        for path in sources
+    ]
     entries = [{**report.to_dict(), "accepted": report.accepted} for report in reports]
     accepted_count = sum(report.accepted for report in reports)
     rejected_count = len(entries) - accepted_count
@@ -62,11 +106,13 @@ def _build_report(corpus: Path, pattern: str) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     try:
-        report = _build_report(args.corpus, args.pattern)
+        passwords = _load_password_map(args.password_map)
+        report = _build_report(args.corpus, args.pattern, passwords=passwords)
     except ValueError as exc:
-        build_parser().error(str(exc))
+        parser.error(str(exc))
 
     if args.report is not None:
         report_path = write_json_report(report, args.report)
@@ -79,5 +125,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if report["accepted"] else 1
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
