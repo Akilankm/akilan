@@ -6,7 +6,7 @@ from pathlib import Path
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml"
 
 
-def test_ci_uses_fail_closed_guarded_benchmark_with_persisted_source_evidence() -> None:
+def test_ci_uses_guarded_benchmark_and_persists_source_evidence() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "akilan-guarded-benchmark artifacts/ci-corpus" in workflow
@@ -14,7 +14,7 @@ def test_ci_uses_fail_closed_guarded_benchmark_with_persisted_source_evidence() 
     assert "akilan benchmark artifacts/ci-corpus" not in workflow
 
 
-def test_ci_uploads_guard_evidence_with_the_existing_benchmark_bundle() -> None:
+def test_ci_uploads_guard_evidence_with_benchmark_bundle() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "artifacts/ci-benchmark" in workflow
