@@ -2,8 +2,8 @@
 
 from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
-from .artifact_integrity import validate_page_identities
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
+from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
 from .benchmark_acceptance import (
     BenchmarkAcceptanceReport,
