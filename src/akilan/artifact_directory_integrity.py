@@ -87,7 +87,14 @@ def assess_artifact_directory_integrity(
     canonical document, or source-type mismatch rejects the complete directory.
     """
 
-    root = Path(artifact_root).expanduser().resolve()
+    candidate = Path(artifact_root).expanduser()
+    if candidate.is_symlink():
+        return _rejected(
+            candidate.absolute(),
+            "symlink_rejected",
+            "artifact root must not be a symlink",
+        )
+    root = candidate.resolve()
     if not root.exists():
         return _rejected(root, "missing", "artifact directory does not exist")
     if not root.is_dir():
@@ -95,24 +102,41 @@ def assess_artifact_directory_integrity(
 
     document = root / "document.json"
     if not document.exists():
-        return _rejected(root, "missing_document", "artifact directory does not contain document.json")
+        return _rejected(
+            root,
+            "missing_document",
+            "artifact directory does not contain document.json",
+        )
     if document.is_symlink():
         return _rejected(root, "symlink_rejected", "artifact directory contains a symlink")
     if not document.is_file():
-        return _rejected(root, "invalid_document", "artifact document.json is not a regular file")
+        return _rejected(
+            root,
+            "invalid_document",
+            "artifact document.json is not a regular file",
+        )
 
     entries: list[ArtifactDirectoryFile] = []
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+    paths = sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix())
+    for path in paths:
         if path.is_symlink():
             return _rejected(root, "symlink_rejected", "artifact directory contains a symlink")
         if path.is_dir():
             continue
         if not path.is_file():
-            return _rejected(root, "unsupported_entry", "artifact directory contains a non-regular entry")
+            return _rejected(
+                root,
+                "unsupported_entry",
+                "artifact directory contains a non-regular entry",
+            )
         try:
             raw = path.read_bytes()
         except OSError:
-            return _rejected(root, "unreadable", "artifact directory contains an unreadable file")
+            return _rejected(
+                root,
+                "unreadable",
+                "artifact directory contains an unreadable file",
+            )
         entries.append(
             ArtifactDirectoryFile(
                 relative_path=path.relative_to(root).as_posix(),
