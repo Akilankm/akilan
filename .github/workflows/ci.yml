@@ -46,15 +46,31 @@ jobs:
         run: |
           python scripts/generate_ci_benchmark_corpus.py artifacts/ci-corpus \
             --evidence artifacts/ci-benchmark/generated-corpus.json
-      - name: Run benchmark acceptance gate
+      - name: Run guarded benchmark acceptance gate
         if: matrix.python-version == '3.12'
         run: |
-          akilan benchmark artifacts/ci-corpus \
+          akilan-guarded-benchmark artifacts/ci-corpus \
             --output-root artifacts/ci-benchmark/artifacts \
             --report artifacts/ci-benchmark/report.json \
             --acceptance-report artifacts/ci-benchmark/acceptance.json \
+            --guard-report artifacts/ci-benchmark/source-guard.json \
             --min-ordered-element-ratio 0.75 \
             --no-cache
+      - name: Validate guarded benchmark evidence
+        if: matrix.python-version == '3.12'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("artifacts/ci-benchmark/source-guard.json")
+          payload = json.loads(report.read_text(encoding="utf-8"))
+          assert payload["accepted"] is True
+          assert payload["total_count"] > 0
+          assert payload["accepted_count"] == payload["total_count"]
+          assert payload["rejected_count"] == 0
+          assert len(payload["fingerprint"]) == 64
+          PY
       - name: Validate generated artifacts
         if: matrix.python-version == '3.12'
         run: |
