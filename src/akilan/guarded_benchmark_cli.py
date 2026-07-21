@@ -10,7 +10,7 @@ from pathlib import Path
 from .benchmark import write_corpus_report
 from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
 from .config import ExtractionConfig
-from .guarded_benchmark import BenchmarkSourceGuardError, run_guarded_corpus
+from .guarded_benchmark import BenchmarkSourceGuardError, run_guarded_corpus_with_report
 from .report_io import write_json_report
 
 
@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--acceptance-report", type=Path)
-    parser.add_argument("--guard-report", type=Path, help="Optional rejected-source evidence report")
+    parser.add_argument("--guard-report", type=Path, help="Optional accepted or rejected source evidence report")
     parser.add_argument("--pattern", default="*.pdf", help="Recursive glob pattern relative to the corpus")
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--min-success-rate", type=float, default=1.0)
@@ -77,21 +77,25 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        report = run_guarded_corpus(
+        execution = run_guarded_corpus_with_report(
             sources,
             args.output_root,
             config=config,
             use_cache=not args.no_cache,
         )
     except BenchmarkSourceGuardError as exc:
+        guard_payload = exc.report.to_dict()
         payload = {
-            **exc.report.to_dict(),
+            **guard_payload,
             "accepted": False,
-            "guard_report": _write_guard_report(exc.report.to_dict(), args.guard_report),
+            "guard_report": _write_guard_report(guard_payload, args.guard_report),
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
+    report = execution.corpus_report
+    guard_payload = execution.guard_report.to_dict()
+    guard_report_path = _write_guard_report(guard_payload, args.guard_report)
     report_path = write_corpus_report(report, args.report)
     acceptance = evaluate_corpus(report, thresholds)
     acceptance_path = (
@@ -102,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "report": str(report_path),
         "acceptance_report": str(acceptance_path) if acceptance_path else None,
-        "guard_report": None,
+        "guard_report": guard_report_path,
+        "guard_fingerprint": execution.guard_report.fingerprint,
+        "guarded_source_count": execution.guard_report.total_count,
         "total": len(report.cases),
         "succeeded": report.succeeded,
         "failed": report.failed,
