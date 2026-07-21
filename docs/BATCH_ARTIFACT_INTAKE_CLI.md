@@ -28,13 +28,26 @@ The command returns:
 
 Accepted evidence is written to stdout. Rejection evidence is written to stderr. `--report` persists deterministic JSON evidence.
 
-The report includes deterministic identifier ordering, per-member source paths and intake evidence, accepted/rejected counts, and a canonical SHA-256 fingerprint for the exact ordered decision evidence. A valid subset never causes the complete manifest to pass.
+Each readable member entry includes:
+
+- `source_path` for the exact canonical `document.json` assessed;
+- `document_sha256` for the exact source bytes;
+- `document_size_bytes`;
+- compatibility and structural validation evidence.
+
+The top-level canonical SHA-256 fingerprint is computed over the ordered entries, including the document byte identity. Therefore, formatting-only or content changes to an otherwise valid `document.json` produce different intake evidence. Missing or non-file members expose `null` byte identity rather than implying that content was verified.
+
+The report also includes deterministic identifier ordering and accepted/rejected counts. A valid subset never causes the complete manifest to pass.
+
+## Integrity scope
+
+The byte identity binds the intake decision to the exact canonical `document.json` files consumed by this command. It does not recursively hash optional projections, extracted assets, page renders, or other files referenced by the artifact. Consumers that require complete directory integrity should additionally use AKILAN's artifact-directory validation boundary.
 
 ## Safety properties
 
 - PyMuPDF remains the only runtime dependency.
 - Artifacts and the manifest are opened read-only.
+- SHA-256 is computed incrementally with bounded memory.
 - No migration, repair, compatibility override, or canonical schema change occurs.
 - Passwords or external services are not involved.
 - Malformed source files produce stable sanitized statuses rather than tracebacks.
-- The fingerprint represents intake-decision evidence; it is not a replacement for artifact-directory integrity verification.
