@@ -35,7 +35,7 @@ Each readable member entry includes:
 - `document_size_bytes`;
 - compatibility and structural validation evidence.
 
-The top-level canonical SHA-256 fingerprint is computed over the ordered entries, including the document byte identity. Therefore, formatting-only or content changes to an otherwise valid `document.json` produce different intake evidence. Missing or non-file members expose `null` byte identity rather than implying that content was verified.
+The source is read once; the digest and JSON decision are produced from the same byte sequence. The top-level canonical SHA-256 fingerprint is computed over the ordered entries, including the document byte identity. Therefore, formatting-only or content changes to an otherwise valid `document.json` produce different intake evidence. Missing or non-file members expose `null` byte identity rather than implying that content was verified.
 
 The report also includes deterministic identifier ordering and accepted/rejected counts. A valid subset never causes the complete manifest to pass.
 
@@ -47,7 +47,7 @@ The byte identity binds the intake decision to the exact canonical `document.jso
 
 - PyMuPDF remains the only runtime dependency.
 - Artifacts and the manifest are opened read-only.
-- SHA-256 is computed incrementally with bounded memory.
+- Hashing and JSON parsing use the same source bytes, avoiding a separate-read integrity window.
 - No migration, repair, compatibility override, or canonical schema change occurs.
 - Passwords or external services are not involved.
 - Malformed source files produce stable sanitized statuses rather than tracebacks.
