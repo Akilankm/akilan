@@ -50,6 +50,7 @@ akilan-compare-benchmarks = "akilan.benchmark_comparison_cli:main"
 akilan-preflight = "akilan.pdf_preflight_cli:main"
 akilan-preflight-batch = "akilan.pdf_preflight_batch_cli:main"
 akilan-benchmark-preflight = "akilan.benchmark_preflight_cli:main"
+akilan-guarded-benchmark = "akilan.guarded_benchmark_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
