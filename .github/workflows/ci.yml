@@ -46,13 +46,14 @@ jobs:
         run: |
           python scripts/generate_ci_benchmark_corpus.py artifacts/ci-corpus \
             --evidence artifacts/ci-benchmark/generated-corpus.json
-      - name: Run benchmark acceptance gate
+      - name: Run guarded benchmark acceptance gate
         if: matrix.python-version == '3.12'
         run: |
-          akilan benchmark artifacts/ci-corpus \
+          akilan-guarded-benchmark artifacts/ci-corpus \
             --output-root artifacts/ci-benchmark/artifacts \
             --report artifacts/ci-benchmark/report.json \
             --acceptance-report artifacts/ci-benchmark/acceptance.json \
+            --guard-report artifacts/ci-benchmark/source-guard.json \
             --min-ordered-element-ratio 0.75 \
             --no-cache
       - name: Validate generated artifacts
