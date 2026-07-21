@@ -10,6 +10,7 @@ from typing import Any
 
 from .artifact_directory_integrity import (
     ArtifactDirectoryIntegrityReport,
+    _read_stable_regular_file,
     assess_artifact_directory_integrity,
 )
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
@@ -55,8 +56,8 @@ def assess_artifact_directory_intake(
     """Assess complete persisted bytes before compatibility and structural intake.
 
     Directory integrity runs first and fails closed. The canonical ``document.json`` is
-    then read once for decoding and parsing, and its bytes must still match the accepted
-    inventory. The function never repairs, migrates, or mutates artifact files.
+    then read once through the same stable no-follow boundary used by integrity, and its
+    bytes must still match the accepted inventory. No file is repaired or mutated.
     """
 
     integrity = assess_artifact_directory_integrity(artifact_root)
@@ -70,8 +71,8 @@ def assess_artifact_directory_intake(
 
     document_path = Path(integrity.root_path) / "document.json"
     try:
-        raw = document_path.read_bytes()
-    except OSError:
+        raw = _read_stable_regular_file(document_path)
+    except (OSError, RuntimeError, ValueError):
         return ArtifactDirectoryIntakeReport(
             integrity=integrity,
             intake=None,
