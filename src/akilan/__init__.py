@@ -53,6 +53,13 @@ from .relationship_validation import (
     find_duplicate_footnote_markers,
 )
 from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
+from .schema_compatibility import (
+    SchemaCompatibilityReport,
+    SchemaCompatibilityStatus,
+    SchemaVersion,
+    assess_schema_compatibility,
+    parse_schema_version,
+)
 from .schema_resource import load_artifact_json_schema
 from .version import __version__
 
@@ -82,8 +89,12 @@ __all__ = [
     "PageArtifact",
     "PageSelectionError",
     "PersistedGraphViolation",
+    "SchemaCompatibilityReport",
+    "SchemaCompatibilityStatus",
+    "SchemaVersion",
     "SchemaViolation",
     "__version__",
+    "assess_schema_compatibility",
     "build_artifact",
     "build_artifact_cache_identity",
     "build_or_resolve_artifact",
@@ -95,6 +106,7 @@ __all__ = [
     "load_artifact_json_schema",
     "load_corpus_sources",
     "parse_page_selection",
+    "parse_schema_version",
     "resolve_artifact_cache",
     "sync_corpus",
     "validate_artifact",
