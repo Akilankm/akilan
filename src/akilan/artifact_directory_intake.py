@@ -8,11 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifact_directory_integrity import (
-    ArtifactDirectoryIntegrityReport,
-    _read_stable_regular_file,
-    assess_artifact_directory_integrity,
-)
+from . import artifact_directory_integrity as directory_integrity
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
 
 
@@ -20,7 +16,7 @@ from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
 class ArtifactDirectoryIntakeReport:
     """Deterministic all-or-nothing evidence for a persisted artifact directory."""
 
-    integrity: ArtifactDirectoryIntegrityReport
+    integrity: directory_integrity.ArtifactDirectoryIntegrityReport
     intake: ArtifactIntakeReport | None
     status: str
     message: str
@@ -43,7 +39,9 @@ class ArtifactDirectoryIntakeReport:
         }
 
 
-def _document_identity(report: ArtifactDirectoryIntegrityReport) -> tuple[str, int]:
+def _document_identity(
+    report: directory_integrity.ArtifactDirectoryIntegrityReport,
+) -> tuple[str, int]:
     for entry in report.files:
         if entry.relative_path == "document.json":
             return entry.sha256, entry.size_bytes
@@ -60,7 +58,7 @@ def assess_artifact_directory_intake(
     bytes must still match the accepted inventory. No file is repaired or mutated.
     """
 
-    integrity = assess_artifact_directory_integrity(artifact_root)
+    integrity = directory_integrity.assess_artifact_directory_integrity(artifact_root)
     if not integrity.accepted:
         return ArtifactDirectoryIntakeReport(
             integrity=integrity,
@@ -71,7 +69,7 @@ def assess_artifact_directory_intake(
 
     document_path = Path(integrity.root_path) / "document.json"
     try:
-        raw = _read_stable_regular_file(document_path)
+        raw = directory_integrity._read_stable_regular_file(document_path)
     except (OSError, RuntimeError, ValueError):
         return ArtifactDirectoryIntakeReport(
             integrity=integrity,
