@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,14 +42,21 @@ class ArtifactDirectoryIntakeReport:
         }
 
 
+def _document_identity(report: ArtifactDirectoryIntegrityReport) -> tuple[str, int]:
+    for entry in report.files:
+        if entry.relative_path == "document.json":
+            return entry.sha256, entry.size_bytes
+    raise RuntimeError("accepted integrity report omitted document.json")
+
+
 def assess_artifact_directory_intake(
     artifact_root: str | Path,
 ) -> ArtifactDirectoryIntakeReport:
     """Assess complete persisted bytes before compatibility and structural intake.
 
     Directory integrity runs first and fails closed. The canonical ``document.json`` is
-    decoded and parsed only after the complete regular-file inventory is accepted. The
-    function is read-only and never repairs, migrates, or mutates artifact files.
+    then read once for decoding and parsing, and its bytes must still match the accepted
+    inventory. The function never repairs, migrates, or mutates artifact files.
     """
 
     integrity = assess_artifact_directory_integrity(artifact_root)
@@ -62,13 +70,32 @@ def assess_artifact_directory_intake(
 
     document_path = Path(integrity.root_path) / "document.json"
     try:
-        payload = json.loads(document_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        raw = document_path.read_bytes()
+    except OSError:
+        return ArtifactDirectoryIntakeReport(
+            integrity=integrity,
+            intake=None,
+            status="changed_after_integrity",
+            message="artifact document.json changed after integrity assessment",
+        )
+
+    expected_sha256, expected_size = _document_identity(integrity)
+    if len(raw) != expected_size or hashlib.sha256(raw).hexdigest() != expected_sha256:
+        return ArtifactDirectoryIntakeReport(
+            integrity=integrity,
+            intake=None,
+            status="changed_after_integrity",
+            message="artifact document.json changed after integrity assessment",
+        )
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
         return ArtifactDirectoryIntakeReport(
             integrity=integrity,
             intake=None,
             status="invalid_document_json",
-            message="artifact document.json could not be decoded as a JSON object",
+            message="artifact document.json could not be decoded as JSON",
         )
 
     if not isinstance(payload, dict):
