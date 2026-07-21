@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from .canonical_json import canonical_json_sha256
+from .canonical_json import canonical_json_fingerprint
 from .pdf_preflight import PDFPreflightReport, preflight_pdf
 
 
@@ -76,7 +76,7 @@ def preflight_pdf_batch(
         rejected_count=len(entries) - accepted_count,
         status_counts=status_counts,
         entries=tuple(entries),
-        fingerprint=canonical_json_sha256(evidence),
+        fingerprint=canonical_json_fingerprint(evidence),
     )
 
 
