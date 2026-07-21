@@ -87,14 +87,14 @@ def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[s
         return _manifest_failure(manifest_path, "invalid_source", "artifact sources must be non-empty strings")
 
     artifacts: dict[str, Mapping[str, Any]] = {}
-    source_failures: list[dict[str, Any]] = []
+    source_failures: dict[str, dict[str, Any]] = {}
     source_paths: dict[str, str] = {}
     for artifact_id in sorted(manifest):
         source_path = _resolve_manifest_source(manifest_path, manifest[artifact_id])
         source_paths[artifact_id] = str(source_path)
         artifact, failure = _load_artifact(source_path)
         if failure is not None:
-            source_failures.append({"artifact_id": artifact_id, **failure})
+            source_failures[artifact_id] = {"artifact_id": artifact_id, **failure}
         else:
             assert artifact is not None
             artifacts[artifact_id] = artifact
@@ -104,15 +104,15 @@ def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[s
         entry.artifact_id: {**entry.to_dict(), "source_path": source_paths[entry.artifact_id]}
         for entry in assessment.entries
     }
-    failure_entries = {entry["artifact_id"]: entry for entry in source_failures}
     entries = [
-        assessed_entries.get(artifact_id, failure_entries[artifact_id])
+        assessed_entries[artifact_id] if artifact_id in assessed_entries else source_failures[artifact_id]
         for artifact_id in sorted(manifest)
     ]
     accepted_count = sum(bool(entry.get("accepted")) for entry in entries)
-    payload = {
-        "accepted": bool(entries) and accepted_count == len(entries),
-        "status": "accepted" if entries and accepted_count == len(entries) else "rejected",
+    accepted = bool(entries) and accepted_count == len(entries)
+    return {
+        "accepted": accepted,
+        "status": "accepted" if accepted else "rejected",
         "manifest_path": str(manifest_path),
         "total_count": len(entries),
         "accepted_count": accepted_count,
@@ -120,7 +120,6 @@ def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[s
         "fingerprint": canonical_json_fingerprint(entries),
         "entries": entries,
     }
-    return payload
 
 
 def main(argv: list[str] | None = None) -> int:
