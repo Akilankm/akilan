@@ -213,6 +213,8 @@ class PDFArtifactBuilder:
                 raise PDFExtractionError("The PDF is encrypted and the supplied password is missing or invalid")
             if not doc.is_pdf:
                 raise PDFExtractionError(f"Input is not a PDF: {source}")
+            if doc.page_count == 0:
+                raise PDFExtractionError("The PDF contains no pages")
 
             page_indices = _selected_page_indices(doc, self.config)
             pages = [_extract_page(doc, page_index, destination, self.config) for page_index in page_indices]
