@@ -42,6 +42,28 @@ def _make_pdf(path: Path) -> None:
     document.close()
 
 
+def _make_zero_page_pdf(path: Path) -> None:
+    """Write a structurally valid PDF whose page tree contains zero pages."""
+
+    payload = bytearray(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for object_number, body in (
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, b"<< /Type /Pages /Kids [] /Count 0 >>"),
+    ):
+        offsets.append(len(payload))
+        payload.extend(f"{object_number} 0 obj\n".encode())
+        payload.extend(body)
+        payload.extend(b"\nendobj\n")
+    xref_offset = len(payload)
+    payload.extend(b"xref\n0 3\n0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        payload.extend(f"{offset:010d} 00000 n \n".encode())
+    payload.extend(b"trailer\n<< /Size 3 /Root 1 0 R >>\n")
+    payload.extend(f"startxref\n{xref_offset}\n%%EOF\n".encode())
+    path.write_bytes(payload)
+
+
 def test_builder_creates_complete_artifact(tmp_path: Path) -> None:
     pdf = tmp_path / "sample.pdf"
     output = tmp_path / "artifact"
@@ -126,6 +148,28 @@ def test_builder_protects_nonempty_output(tmp_path: Path) -> None:
     builder = PDFArtifactBuilder(ExtractionConfig(overwrite=False))
     with pytest.raises(FileExistsError):
         builder.build(pdf, output)
+
+
+def test_builder_rejects_zero_page_pdf_without_publishing_partial_artifact(tmp_path: Path) -> None:
+    pdf = tmp_path / "empty.pdf"
+    output = tmp_path / "artifact"
+    _make_zero_page_pdf(pdf)
+    output.mkdir()
+    marker = output / "known-good.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    with pymupdf.open(pdf) as document:
+        assert document.is_pdf
+        assert document.page_count == 0
+
+    builder = PDFArtifactBuilder(ExtractionConfig(overwrite=True))
+    with pytest.raises(PDFExtractionError, match="contains no pages"):
+        builder.build(pdf, output)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+    assert not (output / "document.json").exists()
+    assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
+    assert not list(tmp_path.glob(".artifact.akilan-*.bak"))
 
 
 def test_failed_overwrite_preserves_last_known_good_artifact(tmp_path: Path) -> None:
