@@ -2,14 +2,14 @@
 
 from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
+from .artifact_directory_intake import (
+    ArtifactDirectoryIntakeReport,
+    assess_artifact_directory_intake,
+)
 from .artifact_directory_integrity import (
     ArtifactDirectoryFile,
     ArtifactDirectoryIntegrityReport,
     assess_artifact_directory_integrity,
-)
-from .artifact_directory_intake import (
-    ArtifactDirectoryIntakeReport,
-    assess_artifact_directory_intake,
 )
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
 from .artifact_intake_batch import (
