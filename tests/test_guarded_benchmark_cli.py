@@ -75,8 +75,8 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
     persisted = json.loads(guard_report.read_text(encoding="utf-8"))
     assert exit_code == 1
     assert payload["accepted"] is False
-    assert payload["summary"]["rejected"] == 1
-    assert persisted["summary"]["rejected"] == 1
+    assert payload["rejected_count"] == 1
+    assert persisted["rejected_count"] == 1
     assert not output_root.exists()
     assert not report.exists()
 
@@ -104,6 +104,6 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
     payload = json.loads(captured.err)
     assert exit_code == 1
     assert payload["accepted"] is False
-    assert payload["summary"]["total"] == 0
+    assert payload["total_count"] == 0
     assert not output_root.exists()
     assert not report.exists()
