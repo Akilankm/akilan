@@ -38,8 +38,9 @@ def _build_report(corpus: Path, pattern: str) -> dict[str, Any]:
         raise ValueError(f"benchmark corpus directory does not exist: {root}")
 
     sources = tuple(sorted((path.resolve() for path in root.rglob(pattern) if path.is_file()), key=str))
-    entries = [preflight_pdf(path).to_dict() for path in sources]
-    accepted_count = sum(bool(entry["accepted"]) for entry in entries)
+    reports = [preflight_pdf(path) for path in sources]
+    entries = [{**report.to_dict(), "accepted": report.accepted} for report in reports]
+    accepted_count = sum(report.accepted for report in reports)
     rejected_count = len(entries) - accepted_count
     status_counts: dict[str, int] = {}
     for entry in entries:
