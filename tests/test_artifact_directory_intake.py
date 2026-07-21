@@ -95,7 +95,7 @@ def test_incompatible_document_preserves_complete_integrity_evidence(tmp_path) -
 def test_document_change_after_integrity_is_rejected(tmp_path, monkeypatch) -> None:
     root = tmp_path / "artifact"
     write_artifact(root, valid_artifact())
-    original = intake_module.assess_artifact_directory_integrity
+    original = intake_module.directory_integrity.assess_artifact_directory_integrity
 
     def mutate_after_integrity(path):
         report = original(path)
@@ -103,7 +103,7 @@ def test_document_change_after_integrity_is_rejected(tmp_path, monkeypatch) -> N
         return report
 
     monkeypatch.setattr(
-        intake_module,
+        intake_module.directory_integrity,
         "assess_artifact_directory_integrity",
         mutate_after_integrity,
     )
