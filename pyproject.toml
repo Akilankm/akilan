@@ -53,6 +53,7 @@ akilan-benchmark-preflight = "akilan.benchmark_preflight_cli:main"
 akilan-guarded-benchmark = "akilan.guarded_benchmark_cli:main"
 akilan-schema-compatibility = "akilan.schema_compatibility_cli:main"
 akilan-artifact-intake = "akilan.artifact_intake_cli:main"
+akilan-artifact-intake-batch = "akilan.artifact_intake_batch_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
