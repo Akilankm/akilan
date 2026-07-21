@@ -3,6 +3,11 @@
 from .api import build_artifact
 from .artifact_directory import validate_artifact_directory
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
+from .artifact_intake_batch import (
+    ArtifactBatchIntakeEntry,
+    ArtifactBatchIntakeReport,
+    assess_artifact_batch_intake,
+)
 from .artifact_integrity import validate_page_identities
 from .artifact_loader import load_artifact_directory
 from .benchmark_acceptance import (
@@ -65,6 +70,8 @@ from .schema_resource import load_artifact_json_schema
 from .version import __version__
 
 __all__ = [
+    "ArtifactBatchIntakeEntry",
+    "ArtifactBatchIntakeReport",
     "ArtifactBuildResolution",
     "ArtifactCacheIdentity",
     "ArtifactCacheResolution",
@@ -96,6 +103,7 @@ __all__ = [
     "SchemaVersion",
     "SchemaViolation",
     "__version__",
+    "assess_artifact_batch_intake",
     "assess_artifact_intake",
     "assess_schema_compatibility",
     "build_artifact",
