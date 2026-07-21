@@ -7,6 +7,10 @@ from .artifact_directory_integrity import (
     ArtifactDirectoryIntegrityReport,
     assess_artifact_directory_integrity,
 )
+from .artifact_directory_intake import (
+    ArtifactDirectoryIntakeReport,
+    assess_artifact_directory_intake,
+)
 from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
 from .artifact_intake_batch import (
     ArtifactBatchIntakeEntry,
@@ -83,6 +87,7 @@ __all__ = [
     "ArtifactCacheValidation",
     "ArtifactDirectoryFile",
     "ArtifactDirectoryIntegrityReport",
+    "ArtifactDirectoryIntakeReport",
     "ArtifactIntakeReport",
     "ArtifactOperationProfile",
     "ArtifactSchemaError",
@@ -112,6 +117,7 @@ __all__ = [
     "__version__",
     "assess_artifact_batch_intake",
     "assess_artifact_directory_integrity",
+    "assess_artifact_directory_intake",
     "assess_artifact_intake",
     "assess_schema_compatibility",
     "build_artifact",
