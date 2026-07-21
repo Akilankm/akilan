@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+import akilan.artifact_directory_integrity as integrity_module
 from akilan.artifact_directory_integrity import assess_artifact_directory_integrity
 
 
@@ -44,6 +45,32 @@ def test_fingerprint_changes_when_any_artifact_file_changes(tmp_path) -> None:
     assert first.accepted is True
     assert second.accepted is True
     assert first.fingerprint != second.fingerprint
+
+
+def test_concurrent_mutation_rejects_complete_directory_without_partial_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "artifact"
+    root.mkdir()
+    (root / "document.json").write_text("{}", encoding="utf-8")
+    (root / "projection.md").write_text("content", encoding="utf-8")
+    original_read = integrity_module._read_stable_regular_file
+
+    def changing_read(path):
+        if path.name == "projection.md":
+            raise RuntimeError("changed_during_read")
+        return original_read(path)
+
+    monkeypatch.setattr(integrity_module, "_read_stable_regular_file", changing_read)
+
+    report = assess_artifact_directory_integrity(root)
+
+    assert report.accepted is False
+    assert report.status == "changed_during_read"
+    assert report.files == ()
+    assert report.file_count == 0
+    assert report.total_size_bytes == 0
 
 
 def test_missing_document_rejects_directory_without_partial_evidence(tmp_path) -> None:
