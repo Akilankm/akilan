@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .artifact_intake_batch import assess_artifact_batch_intake
-from .artifact_intake_cli import _load_artifact, _resolve_document_path
+from .artifact_intake_cli import _resolve_document_path, _source_failure
 from .canonical_json import canonical_json_fingerprint
 from .report_io import write_json_report
 
@@ -79,21 +79,56 @@ def _resolve_manifest_source(manifest_path: Path, source: str) -> Path:
     return _resolve_document_path(candidate)
 
 
-def _document_integrity(path: Path) -> dict[str, Any]:
-    """Return immutable byte identity for a readable regular document file."""
+def _load_artifact_with_integrity(
+    path: Path,
+) -> tuple[Mapping[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+    """Parse one artifact and hash the exact bytes used for that decision."""
 
+    no_integrity = {"document_sha256": None, "document_size_bytes": None}
+    if not path.exists():
+        return None, _source_failure(path, "missing", "artifact document does not exist"), no_integrity
     if not path.is_file():
-        return {"document_sha256": None, "document_size_bytes": None}
-    digest = hashlib.sha256()
-    size = 0
+        return (
+            None,
+            _source_failure(path, "not_a_file", "artifact document is not a regular file"),
+            no_integrity,
+        )
     try:
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                digest.update(chunk)
-                size += len(chunk)
+        raw = path.read_bytes()
     except OSError:
-        return {"document_sha256": None, "document_size_bytes": None}
-    return {"document_sha256": digest.hexdigest(), "document_size_bytes": size}
+        return (
+            None,
+            _source_failure(path, "unreadable", "artifact document could not be read as UTF-8"),
+            no_integrity,
+        )
+
+    integrity = {
+        "document_sha256": hashlib.sha256(raw).hexdigest(),
+        "document_size_bytes": len(raw),
+    }
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError:
+        return (
+            None,
+            _source_failure(path, "unreadable", "artifact document could not be read as UTF-8"),
+            integrity,
+        )
+    try:
+        artifact = json.loads(text)
+    except json.JSONDecodeError:
+        return (
+            None,
+            _source_failure(path, "invalid_json", "artifact document is not valid JSON"),
+            integrity,
+        )
+    if not isinstance(artifact, Mapping):
+        return (
+            None,
+            _source_failure(path, "invalid_root", "artifact JSON root must be an object"),
+            integrity,
+        )
+    return artifact, None, integrity
 
 
 def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -111,13 +146,13 @@ def _assess_manifest(manifest_path: Path, manifest: Mapping[str, Any]) -> dict[s
     for artifact_id in sorted(manifest):
         source_path = _resolve_manifest_source(manifest_path, manifest[artifact_id])
         source_paths[artifact_id] = str(source_path)
-        source_integrity[artifact_id] = _document_integrity(source_path)
-        artifact, failure = _load_artifact(source_path)
+        artifact, failure, integrity = _load_artifact_with_integrity(source_path)
+        source_integrity[artifact_id] = integrity
         if failure is not None:
             source_failures[artifact_id] = {
                 "artifact_id": artifact_id,
                 **failure,
-                **source_integrity[artifact_id],
+                **integrity,
             }
         else:
             assert artifact is not None
