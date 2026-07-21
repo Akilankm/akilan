@@ -23,6 +23,7 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     output_root = tmp_path / "artifacts"
     report = tmp_path / "report.json"
     acceptance = tmp_path / "acceptance.json"
+    guard_report = tmp_path / "guard.json"
 
     exit_code = main(
         [
@@ -33,6 +34,8 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
             str(report),
             "--acceptance-report",
             str(acceptance),
+            "--guard-report",
+            str(guard_report),
             "--min-ordered-element-ratio",
             "0",
             "--no-cache",
@@ -41,10 +44,16 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
 
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     payload = json.loads(captured.out)
+    persisted_guard = json.loads(guard_report.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert payload["accepted"] is True
     assert payload["succeeded"] == 1
     assert payload["failed"] == 0
+    assert payload["guard_report"] == str(guard_report.resolve())
+    assert payload["guarded_source_count"] == 1
+    assert payload["guard_fingerprint"] == persisted_guard["fingerprint"]
+    assert persisted_guard["accepted_count"] == 1
+    assert persisted_guard["rejected_count"] == 0
     assert report.is_file()
     assert acceptance.is_file()
     assert output_root.is_dir()
