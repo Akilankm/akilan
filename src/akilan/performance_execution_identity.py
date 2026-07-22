@@ -26,10 +26,29 @@ class PerformanceExecutionIdentity:
     extraction_config: dict[str, Any]
     fingerprint: str
 
+    def payload(self) -> dict[str, Any]:
+        """Return the canonical content protected by the fingerprint."""
+
+        return {
+            "python_implementation": self.python_implementation,
+            "python_version": self.python_version,
+            "platform_system": self.platform_system,
+            "platform_machine": self.platform_machine,
+            "pymupdf_version": self.pymupdf_version,
+            "akilan_version": self.akilan_version,
+            "extraction_config": self.extraction_config,
+        }
+
+    @property
+    def valid(self) -> bool:
+        """Return whether the fingerprint matches the represented context."""
+
+        return self.fingerprint == canonical_json_fingerprint(self.payload())
+
     def to_dict(self) -> dict[str, Any]:
         """Return deterministic machine-readable identity evidence."""
 
-        return asdict(self)
+        return {**asdict(self), "valid": self.valid}
 
 
 def build_performance_execution_identity(
@@ -65,6 +84,6 @@ def assess_performance_execution_identity_match(
     baseline: PerformanceExecutionIdentity,
     current: PerformanceExecutionIdentity,
 ) -> bool:
-    """Return whether two performance runs share the exact execution context."""
+    """Return whether two valid runs share the exact execution context."""
 
-    return baseline.fingerprint == current.fingerprint
+    return baseline.valid and current.valid and baseline.fingerprint == current.fingerprint
