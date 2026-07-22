@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from akilan.benchmark_summary import CorpusPerformanceSummary
+from akilan.config import ExtractionConfig
 from akilan.guarded_performance_regression import compare_guarded_corpus_performance
+from akilan.performance_execution_identity import build_performance_execution_identity
 
 
 def _summary(**overrides: float | int) -> CorpusPerformanceSummary:
@@ -35,6 +39,7 @@ def test_matching_source_identity_and_performance_pass() -> None:
 
     assert report.passed is True
     assert report.to_dict()["source_identity"]["matched"] is True
+    assert report.to_dict()["execution_identity"] is None
     assert report.violations == []
 
 
@@ -71,15 +76,87 @@ def test_invalid_source_fingerprint_fails_closed() -> None:
         )
 
 
-def test_performance_and_source_violations_are_stably_ordered() -> None:
+def test_matching_execution_identity_passes() -> None:
+    identity = build_performance_execution_identity(ExtractionConfig(render_pages=False))
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+        current_execution_identity=identity,
+        baseline_execution_identity=identity,
+    )
+
+    evidence = report.to_dict()["execution_identity"]
+    assert report.passed is True
+    assert evidence == {
+        "baseline_fingerprint": identity.fingerprint,
+        "current_fingerprint": identity.fingerprint,
+        "baseline_valid": True,
+        "current_valid": True,
+        "matched": True,
+    }
+
+
+def test_execution_identity_mismatch_fails_closed() -> None:
+    baseline = build_performance_execution_identity(ExtractionConfig(render_pages=False))
+    current = build_performance_execution_identity(ExtractionConfig(render_pages=True))
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+        current_execution_identity=current,
+        baseline_execution_identity=baseline,
+    )
+
+    assert report.passed is False
+    assert report.violations[0].rule_id == "performance-execution-identity-v1"
+    assert report.to_dict()["execution_identity"]["matched"] is False
+
+
+def test_tampered_execution_identity_fails_closed() -> None:
+    baseline = build_performance_execution_identity()
+    current = replace(baseline, fingerprint="f" * 64)
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+        current_execution_identity=current,
+        baseline_execution_identity=baseline,
+    )
+
+    assert report.passed is False
+    assert report.to_dict()["execution_identity"]["current_valid"] is False
+
+
+def test_execution_identities_are_an_all_or_nothing_pair() -> None:
+    identity = build_performance_execution_identity()
+    with pytest.raises(ValueError, match="must be supplied together"):
+        compare_guarded_corpus_performance(
+            _summary(),
+            _summary(),
+            current_source_fingerprint="a" * 64,
+            baseline_source_fingerprint="a" * 64,
+            current_execution_identity=identity,
+        )
+
+
+def test_performance_and_identity_violations_are_stably_ordered() -> None:
+    baseline_identity = build_performance_execution_identity(ExtractionConfig(render_pages=False))
+    current_identity = build_performance_execution_identity(ExtractionConfig(render_pages=True))
     report = compare_guarded_corpus_performance(
         _summary(pages_per_second=1.0),
         _summary(),
         current_source_fingerprint="b" * 64,
         baseline_source_fingerprint="a" * 64,
+        current_execution_identity=current_identity,
+        baseline_execution_identity=baseline_identity,
     )
 
     assert [violation.metric for violation in report.violations] == [
+        "execution_identity_fingerprint",
         "pages_per_second",
         "source_guard_fingerprint",
     ]
