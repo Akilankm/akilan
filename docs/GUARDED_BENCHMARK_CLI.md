@@ -8,6 +8,7 @@ akilan-guarded-benchmark data \
   --report artifacts/benchmark/report.json \
   --acceptance-report artifacts/benchmark/acceptance.json \
   --guard-report artifacts/benchmark/source-guard.json \
+  --performance-report artifacts/benchmark/performance.json \
   --min-ordered-element-ratio 0.75 \
   --no-cache
 ```
@@ -22,9 +23,19 @@ The run is rejected when:
 - a source is missing, unreadable, malformed, non-PDF, encrypted, or zero-page;
 - any other source-preflight diagnostic is not accepted.
 
-A rejected run returns exit code `1`, writes deterministic guard evidence to stderr, optionally persists it through `--guard-report`, and leaves the benchmark output root and corpus report absent.
+A rejected run returns exit code `1`, writes deterministic guard evidence to stderr, optionally persists it through `--guard-report`, and leaves the benchmark output root, corpus report, and performance report absent.
 
 After every source passes, the command delegates to the existing benchmark runner and acceptance evaluator. When `--guard-report` is supplied, the same deterministic source evidence is persisted for successful runs. The command output includes the guard fingerprint and guarded source count so benchmark reports can be tied to the exact normalized, deduplicated source set that passed preflight.
+
+When `--performance-report` is supplied, the command also persists deterministic corpus-level performance evidence containing:
+
+- measured case count and cache-hit ratio;
+- total wall time, source bytes, output bytes, and materialized page count;
+- aggregate pages per second and source MiB per second;
+- maximum observed process-local Python memory peak;
+- deterministic phase-time totals.
+
+The same performance payload is embedded in the command result, allowing automation to consume the evidence without reopening the report file. Failed benchmark cases contribute available timing, memory, and byte-volume evidence, but only successfully materialized pages contribute to page throughput.
 
 Acceptance failures also return exit code `1`; invalid CLI configuration returns `2` through `argparse`.
 
@@ -33,6 +44,7 @@ Acceptance failures also return exit code `1`; invalid CLI configuration returns
 Call `run_guarded_corpus_with_report()` when programmatic consumers need both readiness and benchmark evidence:
 
 ```python
+from akilan.benchmark_summary import summarize_corpus_performance
 from akilan.guarded_benchmark import run_guarded_corpus_with_report
 
 execution = run_guarded_corpus_with_report(
@@ -43,6 +55,7 @@ execution = run_guarded_corpus_with_report(
 
 print(execution.guard_report.fingerprint)
 print(execution.corpus_report.succeeded)
+print(summarize_corpus_performance(execution.corpus_report).to_dict())
 ```
 
 The existing `run_guarded_corpus()` API remains unchanged and continues returning only `CorpusReport`.
