@@ -12,6 +12,7 @@ from .benchmark_acceptance import BenchmarkThresholds, evaluate_corpus
 from .benchmark_summary import summarize_corpus_performance
 from .config import ExtractionConfig
 from .guarded_benchmark import BenchmarkSourceGuardError, run_guarded_corpus_with_report
+from .performance_execution_identity import build_performance_execution_identity
 from .report_io import write_json_report
 
 
@@ -26,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--acceptance-report", type=Path)
     parser.add_argument("--guard-report", type=Path, help="Optional accepted or rejected source evidence report")
     parser.add_argument("--performance-report", type=Path, help="Optional aggregate performance evidence report")
+    parser.add_argument(
+        "--execution-identity-report",
+        type=Path,
+        help="Optional runtime and extraction-configuration identity report",
+    )
     parser.add_argument("--pattern", default="*.pdf", help="Recursive glob pattern relative to the corpus")
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--min-success-rate", type=float, default=1.0)
@@ -92,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             "accepted": False,
             "guard_report": _write_guard_report(guard_payload, args.guard_report),
             "performance_report": None,
+            "execution_identity_report": None,
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 1
@@ -106,6 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.performance_report is not None
         else None
     )
+    execution_identity = build_performance_execution_identity(config)
+    execution_identity_path = (
+        write_json_report(execution_identity.to_dict(), args.execution_identity_report)
+        if args.execution_identity_report is not None
+        else None
+    )
     acceptance = evaluate_corpus(report, thresholds)
     acceptance_path = (
         write_json_report(acceptance.to_dict(), args.acceptance_report)
@@ -117,14 +130,19 @@ def main(argv: list[str] | None = None) -> int:
         "acceptance_report": str(acceptance_path) if acceptance_path else None,
         "guard_report": guard_report_path,
         "performance_report": str(performance_path) if performance_path else None,
+        "execution_identity_report": (
+            str(execution_identity_path) if execution_identity_path else None
+        ),
         "guard_fingerprint": execution.guard_report.fingerprint,
         "guarded_source_count": execution.guard_report.total_count,
+        "execution_identity_fingerprint": execution_identity.fingerprint,
         "total": len(report.cases),
         "succeeded": report.succeeded,
         "failed": report.failed,
         "accepted": acceptance.passed,
         "violation_count": len(acceptance.violations),
         "performance": performance.to_dict(),
+        "execution_identity": execution_identity.to_dict(),
     }
     stream = sys.stdout if acceptance.passed else sys.stderr
     print(json.dumps(payload, indent=2, sort_keys=True), file=stream)
