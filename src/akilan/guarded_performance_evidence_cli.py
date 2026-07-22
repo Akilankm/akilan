@@ -19,8 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="akilan-verify-performance-evidence",
         description=(
             "Verify the canonical SHA-256 fingerprint of a persisted guarded "
-            "performance-regression decision. This command does not reinterpret "
-            "or override the recorded pass/fail decision."
+            "performance-regression decision and optionally require the recorded "
+            "decision to have passed."
         ),
     )
     parser.add_argument("evidence", type=Path, help="Persisted guarded regression JSON evidence")
@@ -28,6 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--report",
         type=Path,
         help="Optional path for deterministic machine-readable verification evidence",
+    )
+    parser.add_argument(
+        "--require-passed",
+        action="store_true",
+        help=(
+            "Return exit code 1 unless fingerprint-valid evidence records passed=true. "
+            "This does not recompute or override the decision."
+        ),
     )
     return parser
 
@@ -51,8 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     """Verify persisted evidence and return a stable process exit code.
 
     Exit codes:
-    - 0: fingerprint-valid evidence
-    - 1: missing, malformed, or fingerprint-invalid evidence
+    - 0: fingerprint-valid evidence satisfying any requested decision policy
+    - 1: missing, malformed, fingerprint-invalid, or policy-rejected evidence
     - 2: invalid command configuration
     """
 
@@ -61,25 +69,50 @@ def main(argv: list[str] | None = None) -> int:
 
     evidence, source_error = _load_evidence(args.evidence)
     if source_error is not None:
-        payload = {**source_error, "report": None}
+        payload = {
+            **source_error,
+            "report": None,
+            "require_passed": args.require_passed,
+            "decision_accepted": False,
+        }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 1
 
     assert evidence is not None
     verification = verify_guarded_performance_regression_evidence(evidence)
+    recorded_decision = evidence.get("passed")
+    decision_is_boolean = isinstance(recorded_decision, bool)
+    decision_accepted = verification.valid and (
+        not args.require_passed or (decision_is_boolean and recorded_decision)
+    )
+    operational_status = verification.status
+    if verification.valid and args.require_passed:
+        if recorded_decision is True:
+            operational_status = "accepted"
+        elif decision_is_boolean:
+            operational_status = "recorded_decision_failed"
+        else:
+            operational_status = "recorded_decision_missing"
+
+    report_payload = {
+        **verification.to_dict(),
+        "operational_status": operational_status,
+        "require_passed": args.require_passed,
+        "recorded_decision": recorded_decision,
+        "decision_accepted": decision_accepted,
+    }
     report_path: Path | None = None
     if args.report is not None:
-        report_path = write_json_report(verification.to_dict(), args.report)
+        report_path = write_json_report(report_payload, args.report)
 
     payload = {
-        **verification.to_dict(),
+        **report_payload,
         "source": str(args.evidence.expanduser().resolve()),
         "report": str(report_path) if report_path is not None else None,
-        "recorded_decision": evidence.get("passed"),
     }
-    stream = sys.stdout if verification.valid else sys.stderr
+    stream = sys.stdout if decision_accepted else sys.stderr
     print(json.dumps(payload, indent=2, sort_keys=True), file=stream)
-    return 0 if verification.valid else 1
+    return 0 if decision_accepted else 1
 
 
 if __name__ == "__main__":
