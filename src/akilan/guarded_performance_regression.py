@@ -51,8 +51,8 @@ class GuardedPerformanceRegressionReport:
                 PerformanceRegressionViolation(
                     metric="source_guard_fingerprint",
                     expected=f"== {self.source_identity.baseline_fingerprint}",
-                    baseline=0,
-                    current=1,
+                    baseline=self.source_identity.baseline_fingerprint,
+                    current=self.source_identity.current_fingerprint,
                     message=(
                         "current and baseline performance evidence describe different guarded source sets"
                     ),
@@ -62,10 +62,9 @@ class GuardedPerformanceRegressionReport:
         return sorted(violations, key=lambda item: (item.metric, item.rule_id))
 
     def to_dict(self) -> dict[str, Any]:
-        payload = self.performance.to_dict()
         violations = self.violations
         return {
-            **payload,
+            **self.performance.to_dict(),
             "passed": self.passed,
             "source_identity": {
                 **asdict(self.source_identity),
@@ -90,8 +89,7 @@ def compare_guarded_corpus_performance(
         baseline_fingerprint=baseline_source_fingerprint,
         current_fingerprint=current_source_fingerprint,
     )
-    performance = compare_corpus_performance(current, baseline, thresholds)
     return GuardedPerformanceRegressionReport(
-        performance=performance,
+        performance=compare_corpus_performance(current, baseline, thresholds),
         source_identity=identity,
     )
