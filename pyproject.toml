@@ -56,6 +56,7 @@ akilan-artifact-intake = "akilan.artifact_intake_cli:main"
 akilan-artifact-intake-batch = "akilan.artifact_intake_batch_cli:main"
 akilan-artifact-integrity = "akilan.artifact_directory_integrity_cli:main"
 akilan-artifact-directory-intake = "akilan.artifact_directory_intake_cli:main"
+akilan-artifact-directory-intake-batch = "akilan.artifact_directory_intake_batch_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
