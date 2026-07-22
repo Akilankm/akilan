@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+
 from akilan.benchmark_summary import CorpusPerformanceSummary
 from akilan.canonical_json import canonical_json_fingerprint
 from akilan.config import ExtractionConfig
