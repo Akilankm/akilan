@@ -8,6 +8,8 @@ akilan-performance-regression \
   artifacts/ci-benchmark/performance.json \
   --baseline-guard-report baselines/linux-python312-source-guard.json \
   --current-guard-report artifacts/ci-benchmark/source-guard.json \
+  --baseline-execution-identity-report baselines/linux-python312-execution-identity.json \
+  --current-execution-identity-report artifacts/ci-benchmark/execution-identity.json \
   --report artifacts/ci-benchmark/performance-regression.json
 ```
 
@@ -19,7 +21,12 @@ The command reads the deterministic JSON emitted by `akilan-guarded-benchmark --
 - total source bytes;
 - successfully materialized page count.
 
-For production and CI baselines, also provide the corresponding accepted source-guard reports. The command then requires the exact source-set fingerprints to match. This prevents two different corpora with coincidentally equal counts, bytes, and page totals from being treated as equivalent workloads.
+For production and CI baselines, provide both identity pairs:
+
+- accepted source-guard reports, proving that the exact PDF source-set fingerprints match;
+- verified execution-identity reports, proving that the runtime and extraction contexts match.
+
+This prevents different corpora, hardware architectures, Python/PyMuPDF/AKILAN versions, or extraction configurations from being interpreted as product performance regressions merely because their aggregate counters happen to align.
 
 `--baseline-guard-report` and `--current-guard-report` are an all-or-nothing pair. Each report must:
 
@@ -27,7 +34,14 @@ For production and CI baselines, also provide the corresponding accepted source-
 - have `accepted: true`;
 - contain a 64-character lowercase hexadecimal `fingerprint`.
 
-A workload or source-identity mismatch fails closed and suppresses a passing result.
+`--baseline-execution-identity-report` and `--current-execution-identity-report` are also an all-or-nothing pair. Each report must:
+
+- be valid UTF-8 JSON with an object root;
+- contain all persisted execution-context fields;
+- contain an extraction-configuration object;
+- contain a fingerprint that recomputes exactly from the represented context.
+
+A workload, source-identity, or execution-identity mismatch fails closed and suppresses a passing result.
 
 Default regression limits are:
 
@@ -50,24 +64,32 @@ akilan-performance-regression baseline.json current.json \
 
 ## Evidence
 
-The output includes a `source_identity` object:
+The output includes `source_identity` and `execution_identity` objects:
 
 ```json
 {
-  "checked": true,
-  "matched": true,
-  "baseline_fingerprint": "...",
-  "current_fingerprint": "..."
+  "source_identity": {
+    "checked": true,
+    "matched": true,
+    "baseline_fingerprint": "...",
+    "current_fingerprint": "..."
+  },
+  "execution_identity": {
+    "checked": true,
+    "matched": true,
+    "baseline_fingerprint": "...",
+    "current_fingerprint": "..."
+  }
 }
 ```
 
-When fingerprints differ, the report contains the stable rule identifier `performance-source-identity-v1` and returns a blocking result even when aggregate workload counters match.
+When source fingerprints differ, the report contains stable rule identifier `performance-source-identity-v1`. When execution fingerprints differ, it contains `performance-execution-identity-v1`. Either mismatch returns a blocking result even when aggregate workload and performance counters match.
 
 ## Exit codes
 
 - `0`: equivalent workload and no material regression;
-- `1`: workload mismatch, source-identity mismatch, or one or more performance regressions;
-- `2`: malformed evidence, incomplete guard configuration, unreadable input, or invalid threshold configuration.
+- `1`: workload mismatch, source-identity mismatch, execution-identity mismatch, or one or more performance regressions;
+- `2`: malformed evidence, incomplete paired identity configuration, unreadable input, or invalid threshold configuration.
 
 Passing evidence is written to standard output. Blocking evidence is written to standard error. `--report` persists the same deterministic payload.
 
@@ -81,6 +103,7 @@ A baseline is meaningful only when its execution context is recorded and control
 - AKILAN commit or package version;
 - extraction configuration;
 - accepted source-guard report and fingerprint;
+- verified execution-identity report and fingerprint;
 - cache mode.
 
 Do not compare reports from different hardware classes, corpus identities, extraction profiles, or cache modes and interpret the result as a product regression.

@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from akilan.performance_regression_cli import load_guard_fingerprint, load_performance_summary, main
+from akilan.canonical_json import canonical_json_fingerprint
+from akilan.performance_regression_cli import (
+    load_execution_identity,
+    load_guard_fingerprint,
+    load_performance_summary,
+    main,
+)
 
 
 def _payload(**overrides: object) -> dict[str, object]:
@@ -35,6 +41,21 @@ def _guard(path: Path, fingerprint: str) -> Path:
     return _write(path, {"accepted": True, "fingerprint": fingerprint})
 
 
+def _execution_identity(path: Path, **overrides: object) -> Path:
+    payload: dict[str, object] = {
+        "python_implementation": "CPython",
+        "python_version": "3.12.10",
+        "platform_system": "Linux",
+        "platform_machine": "x86_64",
+        "pymupdf_version": "1.26.3",
+        "akilan_version": "0.1.0",
+        "extraction_config": {"render_pages": False, "overwrite": True},
+    }
+    payload.update(overrides)
+    payload["fingerprint"] = canonical_json_fingerprint(payload)
+    return _write(path, payload)
+
+
 def test_loader_rejects_missing_and_invalid_fields(tmp_path: Path) -> None:
     missing = _payload()
     del missing["pages_per_second"]
@@ -53,6 +74,15 @@ def test_guard_loader_rejects_unaccepted_and_malformed_identity(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="lowercase hexadecimal"):
         load_guard_fingerprint(_guard(tmp_path / "invalid.json", "G" * 64))
+
+
+def test_execution_identity_loader_rejects_tampered_evidence(tmp_path: Path) -> None:
+    identity_path = _execution_identity(tmp_path / "identity.json")
+    payload = json.loads(identity_path.read_text(encoding="utf-8"))
+    payload["python_version"] = "3.13.0"
+
+    with pytest.raises(ValueError, match="fingerprint does not match"):
+        load_execution_identity(_write(identity_path, payload))
 
 
 def test_cli_passes_equivalent_run_and_persists_identical_evidence(
@@ -76,6 +106,12 @@ def test_cli_passes_equivalent_run_and_persists_identical_evidence(
     assert emitted["violation_count"] == 0
     assert emitted["report"] == str(report.resolve())
     assert emitted["source_identity"] == {
+        "checked": False,
+        "matched": True,
+        "baseline_fingerprint": None,
+        "current_fingerprint": None,
+    }
+    assert emitted["execution_identity"] == {
         "checked": False,
         "matched": True,
         "baseline_fingerprint": None,
@@ -108,6 +144,37 @@ def test_cli_accepts_matching_guarded_source_identity(
     payload = json.loads(capsys.readouterr().out)
     assert payload["passed"] is True
     assert payload["source_identity"] == {
+        "checked": True,
+        "matched": True,
+        "baseline_fingerprint": fingerprint,
+        "current_fingerprint": fingerprint,
+    }
+
+
+def test_cli_accepts_matching_execution_identity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline = _write(tmp_path / "baseline.json", _payload())
+    current = _write(tmp_path / "current.json", _payload())
+    baseline_identity = _execution_identity(tmp_path / "baseline-identity.json")
+    current_identity = _execution_identity(tmp_path / "current-identity.json")
+
+    exit_code = main(
+        [
+            str(baseline),
+            str(current),
+            "--baseline-execution-identity-report",
+            str(baseline_identity),
+            "--current-execution-identity-report",
+            str(current_identity),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    fingerprint = json.loads(baseline_identity.read_text(encoding="utf-8"))["fingerprint"]
+    assert payload["execution_identity"] == {
         "checked": True,
         "matched": True,
         "baseline_fingerprint": fingerprint,
@@ -155,6 +222,49 @@ def test_cli_rejects_different_guarded_source_sets_even_when_counts_match(
     ]
 
 
+def test_cli_rejects_different_execution_contexts_even_when_performance_matches(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    baseline = _write(tmp_path / "baseline.json", _payload())
+    current = _write(tmp_path / "current.json", _payload())
+    baseline_identity = _execution_identity(tmp_path / "baseline-identity.json")
+    current_identity = _execution_identity(
+        tmp_path / "current-identity.json",
+        platform_machine="aarch64",
+    )
+
+    exit_code = main(
+        [
+            str(baseline),
+            str(current),
+            "--baseline-execution-identity-report",
+            str(baseline_identity),
+            "--current-execution-identity-report",
+            str(current_identity),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["execution_identity"]["matched"] is False
+    assert payload["violations"] == [
+        {
+            "metric": "execution_identity_fingerprint",
+            "expected": f"== {payload['execution_identity']['baseline_fingerprint']}",
+            "baseline": payload["execution_identity"]["baseline_fingerprint"],
+            "current": payload["execution_identity"]["current_fingerprint"],
+            "message": (
+                "current and baseline performance evidence describe different runtime or "
+                "extraction contexts"
+            ),
+            "rule_id": "performance-execution-identity-v1",
+        }
+    ]
+
+
 def test_cli_reports_regression_to_stderr(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     baseline = _write(tmp_path / "baseline.json", _payload())
     current = _write(
@@ -194,6 +304,24 @@ def test_cli_rejects_partial_guard_configuration(tmp_path: Path) -> None:
                 str(current),
                 "--baseline-guard-report",
                 str(baseline_guard),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_cli_rejects_partial_execution_identity_configuration(tmp_path: Path) -> None:
+    baseline = _write(tmp_path / "baseline.json", _payload())
+    current = _write(tmp_path / "current.json", _payload())
+    baseline_identity = _execution_identity(tmp_path / "baseline-identity.json")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                str(baseline),
+                str(current),
+                "--baseline-execution-identity-report",
+                str(baseline_identity),
             ]
         )
 
