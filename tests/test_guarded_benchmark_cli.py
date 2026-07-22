@@ -61,6 +61,13 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     assert persisted_performance["measured_case_count"] == 1
     assert persisted_performance["total_page_count"] == 1
     assert persisted_performance["total_source_size_bytes"] > 0
+    assert persisted_performance["total_output_size_bytes"] > 0
+    assert persisted_performance["total_elapsed_seconds"] >= 0
+    assert persisted_performance["pages_per_second"] >= 0
+    assert persisted_performance["source_mib_per_second"] >= 0
+    assert persisted_performance["peak_python_memory_bytes"] >= 0
+    assert isinstance(persisted_performance["phase_seconds"], dict)
+    assert all(value >= 0 for value in persisted_performance["phase_seconds"].values())
     assert persisted_guard["accepted_count"] == 1
     assert persisted_guard["rejected_count"] == 0
     assert report.is_file()
