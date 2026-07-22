@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import platform
-import sys
 from dataclasses import asdict, dataclass
 from typing import Any
 
