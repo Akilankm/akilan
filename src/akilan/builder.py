@@ -26,6 +26,7 @@ from .geometry import BBox
 from .layout import build_reading_order
 from .models import DocumentArtifact, PageArtifact, TextBlock
 from .native import sha256_file
+from .output_lease import OutputBuildLease
 from .projection import document_plain_text, document_statistics, page_markdown, page_metrics, render_page
 from .relationships import infer_document_relationships
 from .semantics import assign_page_semantics, mark_repeated_headers_and_footers
@@ -189,19 +190,20 @@ class PDFArtifactBuilder:
         destination = Path(output_dir).expanduser().resolve()
         if not source.is_file():
             raise FileNotFoundError(source)
-        _validate_output(destination, self.config.overwrite)
-        cache_identity = build_artifact_cache_identity(source, self.config)
-        staging = _staging_directory(destination)
-        staging.mkdir()
-        try:
-            artifact = self._build_into(source, staging, password=password)
-            write_artifact_cache_record(staging, cache_identity)
-            _publish_output(staging, destination)
-            return artifact
-        except Exception:
-            if staging.exists():
-                shutil.rmtree(staging)
-            raise
+        with OutputBuildLease(destination):
+            _validate_output(destination, self.config.overwrite)
+            cache_identity = build_artifact_cache_identity(source, self.config)
+            staging = _staging_directory(destination)
+            staging.mkdir()
+            try:
+                artifact = self._build_into(source, staging, password=password)
+                write_artifact_cache_record(staging, cache_identity)
+                _publish_output(staging, destination)
+                return artifact
+            except Exception:
+                if staging.exists():
+                    shutil.rmtree(staging)
+                raise
 
     def _build_into(self, source: Path, destination: Path, *, password: str | None) -> DocumentArtifact:
         (destination / "pages").mkdir(parents=True, exist_ok=True)
