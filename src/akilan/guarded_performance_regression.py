@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .benchmark_summary import CorpusPerformanceSummary
+from .canonical_json import canonical_json_fingerprint
 from .performance_execution_identity import PerformanceExecutionIdentity
 from .performance_regression import (
     PerformanceRegressionReport,
@@ -110,7 +111,9 @@ class GuardedPerformanceRegressionReport:
             )
         return sorted(violations, key=lambda item: (item.metric, item.rule_id))
 
-    def to_dict(self) -> dict[str, Any]:
+    def evidence_payload(self) -> dict[str, Any]:
+        """Return the canonical decision evidence protected by the fingerprint."""
+
         violations = self.violations
         return {
             **self.performance.to_dict(),
@@ -124,6 +127,18 @@ class GuardedPerformanceRegressionReport:
             ),
             "violation_count": len(violations),
             "violations": [asdict(violation) for violation in violations],
+        }
+
+    @property
+    def evidence_fingerprint(self) -> str:
+        """Return a canonical SHA-256 fingerprint for the complete decision evidence."""
+
+        return canonical_json_fingerprint(self.evidence_payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.evidence_payload(),
+            "evidence_fingerprint": self.evidence_fingerprint,
         }
 
 

@@ -35,4 +35,22 @@ Stable blocking rules are:
 
 Performance, source, and execution-identity violations are emitted in deterministic metric order. The evidence includes exact baseline/current fingerprints and validity flags without exposing volatile host data.
 
+## Decision evidence fingerprint
+
+Every report exposes `evidence_fingerprint`, a lowercase SHA-256 digest calculated from the complete canonical decision payload:
+
+- baseline and current performance summaries;
+- threshold evaluation and workload-equivalence evidence;
+- guarded source identities;
+- optional execution identities and validity flags;
+- final pass/fail state;
+- stable ordered violations.
+
+```python
+evidence = report.to_dict()
+assert evidence["evidence_fingerprint"] == report.evidence_fingerprint
+```
+
+The fingerprint field itself is excluded from the protected payload. Persist the complete `to_dict()` result to bind an audit record to the exact decision evidence. Recomputing the fingerprint from the remaining canonical payload detects later mutation, accidental drift, or substitution of any protected value.
+
 This boundary is read-only. It does not mutate benchmark evidence, artifacts, source PDFs, thresholds, execution identities, or the canonical artifact schema. PyMuPDF remains the only runtime dependency.

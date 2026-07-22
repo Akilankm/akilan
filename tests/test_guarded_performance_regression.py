@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from akilan.benchmark_summary import CorpusPerformanceSummary
+from akilan.canonical_json import canonical_json_fingerprint
 from akilan.config import ExtractionConfig
 from akilan.guarded_performance_regression import compare_guarded_corpus_performance
 from akilan.performance_execution_identity import build_performance_execution_identity
@@ -160,3 +161,39 @@ def test_performance_and_identity_violations_are_stably_ordered() -> None:
         "pages_per_second",
         "source_guard_fingerprint",
     ]
+
+
+def test_evidence_fingerprint_protects_complete_decision_payload() -> None:
+    identity = build_performance_execution_identity()
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+        current_execution_identity=identity,
+        baseline_execution_identity=identity,
+    )
+
+    evidence = report.to_dict()
+    fingerprint = evidence.pop("evidence_fingerprint")
+
+    assert fingerprint == report.evidence_fingerprint
+    assert fingerprint == canonical_json_fingerprint(evidence)
+    assert len(fingerprint) == 64
+
+
+def test_evidence_fingerprint_changes_when_decision_evidence_changes() -> None:
+    baseline = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+    )
+    regressed = compare_guarded_corpus_performance(
+        _summary(pages_per_second=1.0),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+    )
+
+    assert baseline.evidence_fingerprint != regressed.evidence_fingerprint
