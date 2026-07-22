@@ -40,8 +40,8 @@ class PerformanceRegressionViolation:
 
     metric: str
     expected: str
-    baseline: float | int
-    current: float | int
+    baseline: float | int | str
+    current: float | int | str
     message: str
     rule_id: str
 
