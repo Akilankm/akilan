@@ -28,17 +28,17 @@ _REQUIRED_FIELDS = {
 }
 
 
-def _read_json_object(path: Path) -> dict[str, Any]:
+def _read_json_object(path: Path, *, label: str = "performance report") -> dict[str, Any]:
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        raise ValueError(f"unable to read performance report: {path}") from exc
+        raise ValueError(f"unable to read {label}: {path}") from exc
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"performance report is not valid UTF-8 JSON: {path}") from exc
+        raise ValueError(f"{label} is not valid UTF-8 JSON: {path}") from exc
     if not isinstance(payload, dict):
-        raise ValueError(f"performance report root must be a JSON object: {path}")
+        raise ValueError(f"{label} root must be a JSON object: {path}")
     return payload
 
 
@@ -98,6 +98,20 @@ def load_performance_summary(path: Path) -> CorpusPerformanceSummary:
     )
 
 
+def load_guard_fingerprint(path: Path) -> str:
+    """Load one accepted source-guard fingerprint for workload identity checks."""
+
+    payload = _read_json_object(path, label="source-guard report")
+    if payload.get("accepted") is not True:
+        raise ValueError(f"source-guard report must describe an accepted corpus: {path}")
+    fingerprint = payload.get("fingerprint")
+    if not isinstance(fingerprint, str) or len(fingerprint) != 64:
+        raise ValueError(f"source-guard fingerprint must be a 64-character string: {path}")
+    if any(character not in "0123456789abcdef" for character in fingerprint):
+        raise ValueError(f"source-guard fingerprint must be lowercase hexadecimal: {path}")
+    return fingerprint
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the performance-regression command parser."""
 
@@ -112,6 +126,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("baseline", type=Path, help="Approved baseline performance JSON report")
     parser.add_argument("current", type=Path, help="Current performance JSON report")
     parser.add_argument("--report", type=Path, help="Optional deterministic regression evidence path")
+    parser.add_argument(
+        "--baseline-guard-report",
+        type=Path,
+        help="Optional accepted source-guard report paired with the baseline",
+    )
+    parser.add_argument(
+        "--current-guard-report",
+        type=Path,
+        help="Optional accepted source-guard report paired with the current run",
+    )
     parser.add_argument(
         "--min-pages-per-second-ratio",
         type=float,
@@ -140,6 +164,9 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if (args.baseline_guard_report is None) != (args.current_guard_report is None):
+        parser.error("baseline and current source-guard reports must be supplied together")
+
     try:
         baseline = load_performance_summary(args.baseline)
         current = load_performance_summary(args.current)
@@ -149,24 +176,58 @@ def main(argv: list[str] | None = None) -> int:
             max_output_size_increase_ratio=args.max_output_size_increase_ratio,
             max_peak_memory_increase_ratio=args.max_peak_memory_increase_ratio,
         )
+        baseline_guard = (
+            load_guard_fingerprint(args.baseline_guard_report)
+            if args.baseline_guard_report is not None
+            else None
+        )
+        current_guard = (
+            load_guard_fingerprint(args.current_guard_report)
+            if args.current_guard_report is not None
+            else None
+        )
     except ValueError as exc:
         parser.error(str(exc))
 
     comparison = compare_corpus_performance(current, baseline, thresholds)
+    identity_checked = baseline_guard is not None
+    identity_matched = not identity_checked or baseline_guard == current_guard
     payload = {
         **comparison.to_dict(),
         "baseline": str(args.baseline.resolve()),
         "current": str(args.current.resolve()),
         "report": None,
+        "source_identity": {
+            "checked": identity_checked,
+            "matched": identity_matched,
+            "baseline_fingerprint": baseline_guard,
+            "current_fingerprint": current_guard,
+        },
     }
+    if not identity_matched:
+        payload["passed"] = False
+        payload["violations"] = [
+            *payload["violations"],
+            {
+                "metric": "source_guard_fingerprint",
+                "expected": f"== {baseline_guard}",
+                "baseline": baseline_guard,
+                "current": current_guard,
+                "message": "current and baseline performance evidence describe different guarded source sets",
+                "rule_id": "performance-source-identity-v1",
+            },
+        ]
+        payload["violation_count"] = len(payload["violations"])
+
     if args.report is not None:
         report_path = write_json_report(payload, args.report)
         payload["report"] = str(report_path)
         write_json_report(payload, report_path)
 
-    stream = sys.stdout if comparison.passed else sys.stderr
+    passed = bool(payload["passed"])
+    stream = sys.stdout if passed else sys.stderr
     print(json.dumps(payload, indent=2, sort_keys=True), file=stream)
-    return 0 if comparison.passed else 1
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

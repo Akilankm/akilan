@@ -6,6 +6,8 @@
 akilan-performance-regression \
   baselines/linux-python312-pymupdf126.json \
   artifacts/ci-benchmark/performance.json \
+  --baseline-guard-report baselines/linux-python312-source-guard.json \
+  --current-guard-report artifacts/ci-benchmark/source-guard.json \
   --report artifacts/ci-benchmark/performance-regression.json
 ```
 
@@ -17,7 +19,15 @@ The command reads the deterministic JSON emitted by `akilan-guarded-benchmark --
 - total source bytes;
 - successfully materialized page count.
 
-A workload mismatch fails closed and suppresses relative performance comparisons.
+For production and CI baselines, also provide the corresponding accepted source-guard reports. The command then requires the exact source-set fingerprints to match. This prevents two different corpora with coincidentally equal counts, bytes, and page totals from being treated as equivalent workloads.
+
+`--baseline-guard-report` and `--current-guard-report` are an all-or-nothing pair. Each report must:
+
+- be valid UTF-8 JSON with an object root;
+- have `accepted: true`;
+- contain a 64-character lowercase hexadecimal `fingerprint`.
+
+A workload or source-identity mismatch fails closed and suppresses a passing result.
 
 Default regression limits are:
 
@@ -38,11 +48,26 @@ akilan-performance-regression baseline.json current.json \
   --max-peak-memory-increase-ratio 0.20
 ```
 
+## Evidence
+
+The output includes a `source_identity` object:
+
+```json
+{
+  "checked": true,
+  "matched": true,
+  "baseline_fingerprint": "...",
+  "current_fingerprint": "..."
+}
+```
+
+When fingerprints differ, the report contains the stable rule identifier `performance-source-identity-v1` and returns a blocking result even when aggregate workload counters match.
+
 ## Exit codes
 
 - `0`: equivalent workload and no material regression;
-- `1`: workload mismatch or one or more performance regressions;
-- `2`: malformed evidence, unreadable input, or invalid threshold configuration.
+- `1`: workload mismatch, source-identity mismatch, or one or more performance regressions;
+- `2`: malformed evidence, incomplete guard configuration, unreadable input, or invalid threshold configuration.
 
 Passing evidence is written to standard output. Blocking evidence is written to standard error. `--report` persists the same deterministic payload.
 
@@ -55,7 +80,7 @@ A baseline is meaningful only when its execution context is recorded and control
 - PyMuPDF version;
 - AKILAN commit or package version;
 - extraction configuration;
-- source-guard fingerprint;
+- accepted source-guard report and fingerprint;
 - cache mode.
 
 Do not compare reports from different hardware classes, corpus identities, extraction profiles, or cache modes and interpret the result as a product regression.
