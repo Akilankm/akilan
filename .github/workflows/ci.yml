@@ -55,6 +55,7 @@ jobs:
             --acceptance-report artifacts/ci-benchmark/acceptance.json \
             --guard-report artifacts/ci-benchmark/source-guard.json \
             --performance-report artifacts/ci-benchmark/performance.json \
+            --execution-identity-report artifacts/ci-benchmark/execution-identity.json \
             --min-ordered-element-ratio 0.75 \
             --no-cache
       - name: Validate guarded benchmark evidence
@@ -84,6 +85,16 @@ jobs:
           assert performance["peak_python_memory_bytes"] >= 0
           assert isinstance(performance["phase_seconds"], dict)
           assert all(value >= 0 for value in performance["phase_seconds"].values())
+
+          identity_report = Path("artifacts/ci-benchmark/execution-identity.json")
+          identity = json.loads(identity_report.read_text(encoding="utf-8"))
+          assert identity["valid"] is True
+          assert len(identity["fingerprint"]) == 64
+          assert identity["python_version"]
+          assert identity["pymupdf_version"]
+          assert identity["akilan_version"]
+          assert identity["extraction_config"]["overwrite"] is True
+          assert identity["extraction_config"]["render_pages"] is False
           PY
       - name: Validate generated artifacts
         if: matrix.python-version == '3.12'
