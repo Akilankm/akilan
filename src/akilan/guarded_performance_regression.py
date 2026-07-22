@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -140,6 +141,55 @@ class GuardedPerformanceRegressionReport:
             **self.evidence_payload(),
             "evidence_fingerprint": self.evidence_fingerprint,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class GuardedPerformanceEvidenceVerification:
+    """Integrity result for persisted guarded performance regression evidence."""
+
+    valid: bool
+    status: str
+    expected_fingerprint: str | None
+    actual_fingerprint: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def verify_guarded_performance_regression_evidence(
+    evidence: Mapping[str, Any],
+) -> GuardedPerformanceEvidenceVerification:
+    """Verify the canonical fingerprint of persisted guarded regression evidence.
+
+    This boundary verifies byte-independent canonical JSON integrity. It does not
+    reinterpret the underlying performance decision or authorize a failed report.
+    """
+
+    payload = dict(evidence)
+    actual_fingerprint = payload.pop("evidence_fingerprint", None)
+    if not isinstance(actual_fingerprint, str) or len(actual_fingerprint) != 64:
+        return GuardedPerformanceEvidenceVerification(
+            valid=False,
+            status="invalid_fingerprint",
+            expected_fingerprint=None,
+            actual_fingerprint=(actual_fingerprint if isinstance(actual_fingerprint, str) else None),
+        )
+    if any(character not in "0123456789abcdef" for character in actual_fingerprint):
+        return GuardedPerformanceEvidenceVerification(
+            valid=False,
+            status="invalid_fingerprint",
+            expected_fingerprint=None,
+            actual_fingerprint=actual_fingerprint,
+        )
+
+    expected_fingerprint = canonical_json_fingerprint(payload)
+    valid = actual_fingerprint == expected_fingerprint
+    return GuardedPerformanceEvidenceVerification(
+        valid=valid,
+        status="valid" if valid else "fingerprint_mismatch",
+        expected_fingerprint=expected_fingerprint,
+        actual_fingerprint=actual_fingerprint,
+    )
 
 
 def compare_guarded_corpus_performance(

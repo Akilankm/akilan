@@ -51,6 +51,31 @@ evidence = report.to_dict()
 assert evidence["evidence_fingerprint"] == report.evidence_fingerprint
 ```
 
-The fingerprint field itself is excluded from the protected payload. Persist the complete `to_dict()` result to bind an audit record to the exact decision evidence. Recomputing the fingerprint from the remaining canonical payload detects later mutation, accidental drift, or substitution of any protected value.
+The fingerprint field itself is excluded from the protected payload. Persist the complete `to_dict()` result to bind an audit record to the exact decision evidence.
+
+## Verify persisted evidence
+
+Consumers should verify persisted evidence before trusting its decision fields:
+
+```python
+from akilan.guarded_performance_regression import (
+    verify_guarded_performance_regression_evidence,
+)
+
+verification = verify_guarded_performance_regression_evidence(persisted_evidence)
+if not verification.valid:
+    raise RuntimeError(verification.to_dict())
+```
+
+The verifier:
+
+- requires a lowercase 64-character SHA-256 `evidence_fingerprint`;
+- removes only that fingerprint field from the protected payload;
+- recomputes the canonical JSON fingerprint;
+- returns `valid`, `invalid_fingerprint`, or `fingerprint_mismatch`;
+- exposes expected and actual fingerprints for deterministic audit evidence;
+- never reinterprets a failed performance decision as passing.
+
+Fingerprint verification proves that the persisted canonical decision payload has not changed since it was produced. It does not replace source-guard validation, execution-identity validation, workload-equivalence checks, or threshold evaluation.
 
 This boundary is read-only. It does not mutate benchmark evidence, artifacts, source PDFs, thresholds, execution identities, or the canonical artifact schema. PyMuPDF remains the only runtime dependency.
