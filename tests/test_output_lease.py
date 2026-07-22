@@ -38,9 +38,8 @@ def test_output_lease_is_released_when_build_scope_fails(tmp_path: Path) -> None
     destination = tmp_path / "artifact"
     lease = OutputBuildLease(destination)
 
-    with pytest.raises(RuntimeError, match="expected failure"):
-        with lease:
-            raise RuntimeError("expected failure")
+    with pytest.raises(RuntimeError, match="expected failure"), lease:
+        raise RuntimeError("expected failure")
 
     assert not lease.path.exists()
 
@@ -66,10 +65,9 @@ def test_builder_fails_before_staging_when_destination_is_leased(tmp_path: Path)
     destination = tmp_path / "artifact"
     _make_pdf(pdf)
 
-    with OutputBuildLease(destination):
-        with pytest.raises(OutputLeaseError, match="already leased"):
-            PDFArtifactBuilder(ExtractionConfig(overwrite=True)).build(pdf, destination)
+    with OutputBuildLease(destination), pytest.raises(OutputLeaseError, match="already leased"):
+        PDFArtifactBuilder(ExtractionConfig(overwrite=True)).build(pdf, destination)
 
-        assert not destination.exists()
-        assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
-        assert not list(tmp_path.glob(".artifact.akilan-*.bak"))
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".artifact.akilan-*.tmp"))
+    assert not list(tmp_path.glob(".artifact.akilan-*.bak"))
