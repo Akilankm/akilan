@@ -24,6 +24,7 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     report = tmp_path / "report.json"
     acceptance = tmp_path / "acceptance.json"
     guard_report = tmp_path / "guard.json"
+    performance_report = tmp_path / "performance.json"
 
     exit_code = main(
         [
@@ -36,6 +37,8 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
             str(acceptance),
             "--guard-report",
             str(guard_report),
+            "--performance-report",
+            str(performance_report),
             "--min-ordered-element-ratio",
             "0",
             "--no-cache",
@@ -45,13 +48,19 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     payload = json.loads(captured.out)
     persisted_guard = json.loads(guard_report.read_text(encoding="utf-8"))
+    persisted_performance = json.loads(performance_report.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert payload["accepted"] is True
     assert payload["succeeded"] == 1
     assert payload["failed"] == 0
     assert payload["guard_report"] == str(guard_report.resolve())
+    assert payload["performance_report"] == str(performance_report.resolve())
     assert payload["guarded_source_count"] == 1
     assert payload["guard_fingerprint"] == persisted_guard["fingerprint"]
+    assert payload["performance"] == persisted_performance
+    assert persisted_performance["measured_case_count"] == 1
+    assert persisted_performance["total_page_count"] == 1
+    assert persisted_performance["total_source_size_bytes"] > 0
     assert persisted_guard["accepted_count"] == 1
     assert persisted_guard["rejected_count"] == 0
     assert report.is_file()
@@ -66,6 +75,7 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
     output_root = tmp_path / "artifacts"
     report = tmp_path / "report.json"
     guard_report = tmp_path / "guard.json"
+    performance_report = tmp_path / "performance.json"
 
     exit_code = main(
         [
@@ -76,6 +86,8 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
             str(report),
             "--guard-report",
             str(guard_report),
+            "--performance-report",
+            str(performance_report),
         ]
     )
 
@@ -85,9 +97,11 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
     assert exit_code == 1
     assert payload["accepted"] is False
     assert payload["rejected_count"] == 1
+    assert payload["performance_report"] is None
     assert persisted["rejected_count"] == 1
     assert not output_root.exists()
     assert not report.exists()
+    assert not performance_report.exists()
 
 
 def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
@@ -98,6 +112,7 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
     corpus.mkdir()
     output_root = tmp_path / "artifacts"
     report = tmp_path / "report.json"
+    performance_report = tmp_path / "performance.json"
 
     exit_code = main(
         [
@@ -106,6 +121,8 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
             str(output_root),
             "--report",
             str(report),
+            "--performance-report",
+            str(performance_report),
         ]
     )
 
@@ -114,5 +131,7 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
     assert exit_code == 1
     assert payload["accepted"] is False
     assert payload["total_count"] == 0
+    assert payload["performance_report"] is None
     assert not output_root.exists()
     assert not report.exists()
+    assert not performance_report.exists()
