@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +11,7 @@ from .artifact_directory_intake import (
     ArtifactDirectoryIntakeReport,
     assess_artifact_directory_intake,
 )
+from .canonical_json import canonical_json_fingerprint
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,23 +87,6 @@ class ArtifactDirectoryBatchIntakeReport:
         }
 
 
-def _fingerprint_payload(
-    entries: tuple[ArtifactDirectoryBatchIntakeEntry, ...],
-    status: str,
-) -> str:
-    payload = {
-        "status": status,
-        "entries": [entry.to_dict() for entry in entries],
-    }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def assess_artifact_directory_batch_intake(
     artifact_roots: Mapping[str, str | Path],
 ) -> ArtifactDirectoryBatchIntakeReport:
@@ -115,13 +97,21 @@ def assess_artifact_directory_batch_intake(
     mistaken for an accepted batch. No artifact bytes are modified.
     """
 
-    normalized: list[tuple[str, Path]] = []
-    for identifier, root in artifact_roots.items():
-        if not isinstance(identifier, str) or not identifier:
-            raise ValueError("artifact directory identifiers must be non-empty strings")
-        normalized.append((identifier, Path(root).expanduser().resolve(strict=False)))
+    invalid_ids = [
+        identifier
+        for identifier in artifact_roots
+        if not isinstance(identifier, str) or not identifier
+    ]
+    if invalid_ids:
+        raise ValueError("artifact directory identifiers must be non-empty strings")
 
-    normalized.sort(key=lambda item: item[0])
+    normalized = tuple(
+        (
+            identifier,
+            Path(artifact_roots[identifier]).expanduser().resolve(strict=False),
+        )
+        for identifier in sorted(artifact_roots)
+    )
     entries = tuple(
         ArtifactDirectoryBatchIntakeEntry(
             identifier=identifier,
@@ -141,9 +131,10 @@ def assess_artifact_directory_batch_intake(
         status = "accepted"
         message = "all artifact directories passed byte-integrity and semantic intake"
 
+    evidence = [entry.to_dict() for entry in entries]
     return ArtifactDirectoryBatchIntakeReport(
         entries=entries,
         status=status,
         message=message,
-        fingerprint=_fingerprint_payload(entries, status),
+        fingerprint=canonical_json_fingerprint(evidence),
     )
