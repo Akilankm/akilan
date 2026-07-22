@@ -54,6 +54,7 @@ jobs:
             --report artifacts/ci-benchmark/report.json \
             --acceptance-report artifacts/ci-benchmark/acceptance.json \
             --guard-report artifacts/ci-benchmark/source-guard.json \
+            --performance-report artifacts/ci-benchmark/performance.json \
             --min-ordered-element-ratio 0.75 \
             --no-cache
       - name: Validate guarded benchmark evidence
@@ -63,13 +64,26 @@ jobs:
           import json
           from pathlib import Path
 
-          report = Path("artifacts/ci-benchmark/source-guard.json")
-          payload = json.loads(report.read_text(encoding="utf-8"))
-          assert payload["accepted"] is True
-          assert payload["total_count"] > 0
-          assert payload["accepted_count"] == payload["total_count"]
-          assert payload["rejected_count"] == 0
-          assert len(payload["fingerprint"]) == 64
+          guard_report = Path("artifacts/ci-benchmark/source-guard.json")
+          guard = json.loads(guard_report.read_text(encoding="utf-8"))
+          assert guard["accepted"] is True
+          assert guard["total_count"] > 0
+          assert guard["accepted_count"] == guard["total_count"]
+          assert guard["rejected_count"] == 0
+          assert len(guard["fingerprint"]) == 64
+
+          performance_report = Path("artifacts/ci-benchmark/performance.json")
+          performance = json.loads(performance_report.read_text(encoding="utf-8"))
+          assert performance["measured_case_count"] == guard["total_count"]
+          assert performance["total_page_count"] > 0
+          assert performance["total_source_size_bytes"] > 0
+          assert performance["total_output_size_bytes"] > 0
+          assert performance["total_elapsed_seconds"] >= 0
+          assert performance["pages_per_second"] >= 0
+          assert performance["source_mib_per_second"] >= 0
+          assert performance["peak_python_memory_bytes"] >= 0
+          assert isinstance(performance["phase_seconds"], dict)
+          assert all(value >= 0 for value in performance["phase_seconds"].values())
           PY
       - name: Validate generated artifacts
         if: matrix.python-version == '3.12'
