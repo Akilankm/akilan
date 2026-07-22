@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_summary import CorpusPerformanceSummary
+from .performance_execution_identity import PerformanceExecutionIdentity
 from .performance_regression import PerformanceRegressionThresholds, compare_corpus_performance
 from .report_io import write_json_report
 
@@ -25,6 +26,16 @@ _REQUIRED_FIELDS = {
     "source_mib_per_second",
     "peak_python_memory_bytes",
     "phase_seconds",
+}
+_EXECUTION_IDENTITY_FIELDS = {
+    "python_implementation",
+    "python_version",
+    "platform_system",
+    "platform_machine",
+    "pymupdf_version",
+    "akilan_version",
+    "extraction_config",
+    "fingerprint",
 }
 
 
@@ -112,6 +123,38 @@ def load_guard_fingerprint(path: Path) -> str:
     return fingerprint
 
 
+def load_execution_identity(path: Path) -> PerformanceExecutionIdentity:
+    """Load and verify one persisted performance execution identity."""
+
+    payload = _read_json_object(path, label="execution-identity report")
+    missing = sorted(_EXECUTION_IDENTITY_FIELDS - payload.keys())
+    if missing:
+        raise ValueError(f"execution-identity report is missing required fields: {', '.join(missing)}")
+
+    string_fields = sorted(_EXECUTION_IDENTITY_FIELDS - {"extraction_config"})
+    for field in string_fields:
+        value = payload[field]
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"execution-identity field {field} must be a non-empty string: {path}")
+    extraction_config = payload["extraction_config"]
+    if not isinstance(extraction_config, dict):
+        raise ValueError(f"execution-identity extraction_config must be a JSON object: {path}")
+
+    identity = PerformanceExecutionIdentity(
+        python_implementation=payload["python_implementation"],
+        python_version=payload["python_version"],
+        platform_system=payload["platform_system"],
+        platform_machine=payload["platform_machine"],
+        pymupdf_version=payload["pymupdf_version"],
+        akilan_version=payload["akilan_version"],
+        extraction_config=extraction_config,
+        fingerprint=payload["fingerprint"],
+    )
+    if not identity.valid:
+        raise ValueError(f"execution-identity fingerprint does not match its represented context: {path}")
+    return identity
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the performance-regression command parser."""
 
@@ -135,6 +178,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--current-guard-report",
         type=Path,
         help="Optional accepted source-guard report paired with the current run",
+    )
+    parser.add_argument(
+        "--baseline-execution-identity-report",
+        type=Path,
+        help="Optional verified execution-identity report paired with the baseline",
+    )
+    parser.add_argument(
+        "--current-execution-identity-report",
+        type=Path,
+        help="Optional verified execution-identity report paired with the current run",
     )
     parser.add_argument(
         "--min-pages-per-second-ratio",
@@ -166,6 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if (args.baseline_guard_report is None) != (args.current_guard_report is None):
         parser.error("baseline and current source-guard reports must be supplied together")
+    if (args.baseline_execution_identity_report is None) != (
+        args.current_execution_identity_report is None
+    ):
+        parser.error("baseline and current execution-identity reports must be supplied together")
 
     try:
         baseline = load_performance_summary(args.baseline)
@@ -186,25 +243,47 @@ def main(argv: list[str] | None = None) -> int:
             if args.current_guard_report is not None
             else None
         )
+        baseline_execution = (
+            load_execution_identity(args.baseline_execution_identity_report)
+            if args.baseline_execution_identity_report is not None
+            else None
+        )
+        current_execution = (
+            load_execution_identity(args.current_execution_identity_report)
+            if args.current_execution_identity_report is not None
+            else None
+        )
     except ValueError as exc:
         parser.error(str(exc))
 
     comparison = compare_corpus_performance(current, baseline, thresholds)
-    identity_checked = baseline_guard is not None
-    identity_matched = not identity_checked or baseline_guard == current_guard
+    source_checked = baseline_guard is not None
+    source_matched = not source_checked or baseline_guard == current_guard
+    execution_checked = baseline_execution is not None
+    baseline_execution_fingerprint = baseline_execution.fingerprint if baseline_execution else None
+    current_execution_fingerprint = current_execution.fingerprint if current_execution else None
+    execution_matched = (
+        not execution_checked or baseline_execution_fingerprint == current_execution_fingerprint
+    )
     payload = {
         **comparison.to_dict(),
         "baseline": str(args.baseline.resolve()),
         "current": str(args.current.resolve()),
         "report": None,
         "source_identity": {
-            "checked": identity_checked,
-            "matched": identity_matched,
+            "checked": source_checked,
+            "matched": source_matched,
             "baseline_fingerprint": baseline_guard,
             "current_fingerprint": current_guard,
         },
+        "execution_identity": {
+            "checked": execution_checked,
+            "matched": execution_matched,
+            "baseline_fingerprint": baseline_execution_fingerprint,
+            "current_fingerprint": current_execution_fingerprint,
+        },
     }
-    if not identity_matched:
+    if not source_matched:
         payload["passed"] = False
         payload["violations"] = [
             *payload["violations"],
@@ -217,7 +296,23 @@ def main(argv: list[str] | None = None) -> int:
                 "rule_id": "performance-source-identity-v1",
             },
         ]
-        payload["violation_count"] = len(payload["violations"])
+    if not execution_matched:
+        payload["passed"] = False
+        payload["violations"] = [
+            *payload["violations"],
+            {
+                "metric": "execution_identity_fingerprint",
+                "expected": f"== {baseline_execution_fingerprint}",
+                "baseline": baseline_execution_fingerprint,
+                "current": current_execution_fingerprint,
+                "message": (
+                    "current and baseline performance evidence describe different runtime or "
+                    "extraction contexts"
+                ),
+                "rule_id": "performance-execution-identity-v1",
+            },
+        ]
+    payload["violation_count"] = len(payload["violations"])
 
     if args.report is not None:
         report_path = write_json_report(payload, args.report)
