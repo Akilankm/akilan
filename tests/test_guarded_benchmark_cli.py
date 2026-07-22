@@ -25,6 +25,7 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     acceptance = tmp_path / "acceptance.json"
     guard_report = tmp_path / "guard.json"
     performance_report = tmp_path / "performance.json"
+    execution_identity_report = tmp_path / "execution-identity.json"
 
     exit_code = main(
         [
@@ -39,6 +40,8 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
             str(guard_report),
             "--performance-report",
             str(performance_report),
+            "--execution-identity-report",
+            str(execution_identity_report),
             "--min-ordered-element-ratio",
             "0",
             "--no-cache",
@@ -49,15 +52,23 @@ def test_guarded_benchmark_cli_accepts_ready_corpus(tmp_path: Path, capsys: obje
     payload = json.loads(captured.out)
     persisted_guard = json.loads(guard_report.read_text(encoding="utf-8"))
     persisted_performance = json.loads(performance_report.read_text(encoding="utf-8"))
+    persisted_identity = json.loads(execution_identity_report.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert payload["accepted"] is True
     assert payload["succeeded"] == 1
     assert payload["failed"] == 0
     assert payload["guard_report"] == str(guard_report.resolve())
     assert payload["performance_report"] == str(performance_report.resolve())
+    assert payload["execution_identity_report"] == str(execution_identity_report.resolve())
     assert payload["guarded_source_count"] == 1
     assert payload["guard_fingerprint"] == persisted_guard["fingerprint"]
     assert payload["performance"] == persisted_performance
+    assert payload["execution_identity"] == persisted_identity
+    assert payload["execution_identity_fingerprint"] == persisted_identity["fingerprint"]
+    assert persisted_identity["valid"] is True
+    assert len(persisted_identity["fingerprint"]) == 64
+    assert persisted_identity["extraction_config"]["overwrite"] is True
+    assert persisted_identity["extraction_config"]["render_pages"] is False
     assert persisted_performance["measured_case_count"] == 1
     assert persisted_performance["total_page_count"] == 1
     assert persisted_performance["total_source_size_bytes"] > 0
@@ -83,6 +94,7 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
     report = tmp_path / "report.json"
     guard_report = tmp_path / "guard.json"
     performance_report = tmp_path / "performance.json"
+    execution_identity_report = tmp_path / "execution-identity.json"
 
     exit_code = main(
         [
@@ -95,6 +107,8 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
             str(guard_report),
             "--performance-report",
             str(performance_report),
+            "--execution-identity-report",
+            str(execution_identity_report),
         ]
     )
 
@@ -105,10 +119,12 @@ def test_guarded_benchmark_cli_rejects_before_output_creation(tmp_path: Path, ca
     assert payload["accepted"] is False
     assert payload["rejected_count"] == 1
     assert payload["performance_report"] is None
+    assert payload["execution_identity_report"] is None
     assert persisted["rejected_count"] == 1
     assert not output_root.exists()
     assert not report.exists()
     assert not performance_report.exists()
+    assert not execution_identity_report.exists()
 
 
 def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
@@ -120,6 +136,7 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
     output_root = tmp_path / "artifacts"
     report = tmp_path / "report.json"
     performance_report = tmp_path / "performance.json"
+    execution_identity_report = tmp_path / "execution-identity.json"
 
     exit_code = main(
         [
@@ -130,6 +147,8 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
             str(report),
             "--performance-report",
             str(performance_report),
+            "--execution-identity-report",
+            str(execution_identity_report),
         ]
     )
 
@@ -139,6 +158,8 @@ def test_guarded_benchmark_cli_rejects_empty_corpus_without_side_effects(
     assert payload["accepted"] is False
     assert payload["total_count"] == 0
     assert payload["performance_report"] is None
+    assert payload["execution_identity_report"] is None
     assert not output_root.exists()
     assert not report.exists()
     assert not performance_report.exists()
+    assert not execution_identity_report.exists()
