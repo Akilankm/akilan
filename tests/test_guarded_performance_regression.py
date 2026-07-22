@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from akilan.benchmark_summary import CorpusPerformanceSummary
 from akilan.canonical_json import canonical_json_fingerprint
 from akilan.config import ExtractionConfig
-from akilan.guarded_performance_regression import compare_guarded_corpus_performance
+from akilan.guarded_performance_regression import (
+    compare_guarded_corpus_performance,
+    verify_guarded_performance_regression_evidence,
+)
 from akilan.performance_execution_identity import build_performance_execution_identity
 
 
@@ -197,3 +199,52 @@ def test_evidence_fingerprint_changes_when_decision_evidence_changes() -> None:
     )
 
     assert baseline.evidence_fingerprint != regressed.evidence_fingerprint
+
+
+def test_persisted_evidence_verification_accepts_untampered_report() -> None:
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+    )
+
+    verification = verify_guarded_performance_regression_evidence(report.to_dict())
+
+    assert verification.valid is True
+    assert verification.status == "valid"
+    assert verification.expected_fingerprint == report.evidence_fingerprint
+    assert verification.actual_fingerprint == report.evidence_fingerprint
+
+
+def test_persisted_evidence_verification_rejects_tampered_payload() -> None:
+    report = compare_guarded_corpus_performance(
+        _summary(),
+        _summary(),
+        current_source_fingerprint="a" * 64,
+        baseline_source_fingerprint="a" * 64,
+    )
+    evidence = report.to_dict()
+    evidence["passed"] = False
+
+    verification = verify_guarded_performance_regression_evidence(evidence)
+
+    assert verification.valid is False
+    assert verification.status == "fingerprint_mismatch"
+    assert verification.expected_fingerprint != verification.actual_fingerprint
+
+
+@pytest.mark.parametrize(
+    "fingerprint",
+    [None, "short", "A" * 64, 123],
+)
+def test_persisted_evidence_verification_rejects_invalid_fingerprint(
+    fingerprint: object,
+) -> None:
+    evidence = {"passed": True, "evidence_fingerprint": fingerprint}
+
+    verification = verify_guarded_performance_regression_evidence(evidence)
+
+    assert verification.valid is False
+    assert verification.status == "invalid_fingerprint"
+    assert verification.expected_fingerprint is None
