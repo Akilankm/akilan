@@ -120,16 +120,15 @@ def test_context_manager_preserves_body_and_cleanup_failures(tmp_path: Path) -> 
     destination = tmp_path / "artifact"
     batch = OutputBuildLeaseBatch({"artifact": destination})
 
-    with pytest.raises(OutputLeaseBatchContextError) as raised:
-        with batch:
-            owner_path = batch.leases["artifact"].path / "owner.json"
-            owner = json.loads(owner_path.read_text(encoding="utf-8"))
-            owner["hostname"] = "changed-host"
-            owner_path.write_text(
-                json.dumps(owner, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
-            raise RuntimeError("build failed")
+    with pytest.raises(OutputLeaseBatchContextError) as raised, batch:
+        owner_path = batch.leases["artifact"].path / "owner.json"
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        owner["hostname"] = "changed-host"
+        owner_path.write_text(
+            json.dumps(owner, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        raise RuntimeError("build failed")
 
     error = raised.value
     assert isinstance(error.body_error, RuntimeError)
@@ -146,15 +145,14 @@ def test_context_manager_keeps_cleanup_failure_behavior_without_body_error(
     destination = tmp_path / "artifact"
     batch = OutputBuildLeaseBatch({"artifact": destination})
 
-    with pytest.raises(OutputLeaseError, match="release was incomplete") as raised:
-        with batch:
-            owner_path = batch.leases["artifact"].path / "owner.json"
-            owner = json.loads(owner_path.read_text(encoding="utf-8"))
-            owner["hostname"] = "changed-host"
-            owner_path.write_text(
-                json.dumps(owner, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+    with pytest.raises(OutputLeaseError, match="release was incomplete") as raised, batch:
+        owner_path = batch.leases["artifact"].path / "owner.json"
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        owner["hostname"] = "changed-host"
+        owner_path.write_text(
+            json.dumps(owner, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     assert not isinstance(raised.value, OutputLeaseBatchContextError)
     assert inspect_output_build_lease(destination).status == "valid"
