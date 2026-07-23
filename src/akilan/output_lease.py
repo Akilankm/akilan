@@ -11,6 +11,16 @@ from pathlib import Path
 from types import TracebackType
 from uuid import uuid4
 
+_OWNER_KEYS = frozenset(
+    {
+        "token",
+        "process_id",
+        "hostname",
+        "acquired_at_utc",
+        "destination",
+    }
+)
+
 
 class OutputLeaseError(RuntimeError):
     """Raised when an artifact destination is already leased by another build."""
@@ -108,8 +118,8 @@ class OutputBuildLease:
     def release(self) -> None:
         if not self._acquired:
             return
-        owner = _read_owner(self.path)
-        if owner != self.owner.to_dict():
+        inspection = inspect_output_build_lease(self.destination)
+        if inspection.status != "valid" or inspection.owner != self.owner.to_dict():
             raise OutputLeaseError(
                 f"Refusing to release artifact output lease because ownership changed: {self.path}"
             )
@@ -153,6 +163,7 @@ def inspect_output_build_lease(destination: str | Path) -> OutputLeaseInspection
             violations=("lease_path_must_be_a_regular_directory",),
         )
 
+    entry_violations = _lease_entry_violations(lock_path)
     owner = _read_owner(lock_path)
     if owner is None:
         return OutputLeaseInspection(
@@ -161,10 +172,10 @@ def inspect_output_build_lease(destination: str | Path) -> OutputLeaseInspection
             status="invalid_owner_evidence",
             present=True,
             owner=None,
-            violations=("owner_json_must_be_a_utf8_json_object",),
+            violations=tuple(entry_violations or ["owner_json_must_be_a_utf8_json_object"]),
         )
 
-    violations = _owner_violations(owner, resolved_destination)
+    violations = [*entry_violations, *_owner_violations(owner, resolved_destination)]
     return OutputLeaseInspection(
         destination=str(resolved_destination),
         lease_path=str(lock_path),
@@ -179,8 +190,23 @@ def _lease_path(destination: Path) -> Path:
     return destination.parent / f".{destination.name}.akilan.lock"
 
 
+def _lease_entry_violations(lock_path: Path) -> list[str]:
+    try:
+        entries = list(lock_path.iterdir())
+    except OSError:
+        return ["lease_directory_must_be_readable"]
+    if len(entries) != 1 or entries[0].name != "owner.json":
+        return ["lease_directory_must_contain_only_owner_json"]
+    owner_path = entries[0]
+    if owner_path.is_symlink() or not owner_path.is_file():
+        return ["owner_json_must_be_a_regular_file"]
+    return []
+
+
 def _owner_violations(owner: dict[str, object], destination: Path) -> list[str]:
     violations: list[str] = []
+    if set(owner) != _OWNER_KEYS:
+        violations.append("owner_json_must_have_exact_fields")
     token = owner.get("token")
     if not isinstance(token, str) or len(token) != 32 or any(char not in "0123456789abcdef" for char in token):
         violations.append("token_must_be_lowercase_uuid4_hex")
