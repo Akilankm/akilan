@@ -83,13 +83,13 @@ class OutputBuildLeaseBatch:
             )
             for entry in preflight.entries
         )
-        self._acquired_count = 0
+        self._acquired_indices: list[int] = []
 
     @property
     def acquired(self) -> bool:
         """Return whether this instance currently owns every requested lease."""
 
-        return bool(self._leases) and self._acquired_count == len(self._leases)
+        return bool(self._leases) and len(self._acquired_indices) == len(self._leases)
 
     @property
     def identifiers(self) -> tuple[str, ...]:
@@ -106,13 +106,12 @@ class OutputBuildLeaseBatch:
     def acquire(self) -> OutputBuildLeaseBatch:
         """Acquire every lease, rolling back this instance on partial failure."""
 
-        if self._acquired_count:
+        if self._acquired_indices:
             raise OutputLeaseError("Output lease batch has already started acquisition")
-
         try:
-            for _, lease in self._leases:
+            for index, (_, lease) in enumerate(self._leases):
                 lease.acquire()
-                self._acquired_count += 1
+                self._acquired_indices.append(index)
         except Exception as acquisition_error:
             rollback_errors = self._release_acquired()
             if rollback_errors:
@@ -125,7 +124,7 @@ class OutputBuildLeaseBatch:
         return self
 
     def release(self) -> None:
-        """Release every lease owned by this instance in reverse order."""
+        """Release every independently verified lease in reverse order."""
 
         rollback_errors = self._release_acquired()
         if rollback_errors:
@@ -134,14 +133,15 @@ class OutputBuildLeaseBatch:
 
     def _release_acquired(self) -> list[str]:
         errors: list[str] = []
-        while self._acquired_count:
-            identifier, lease = self._leases[self._acquired_count - 1]
+        retained_indices: list[int] = []
+        for index in reversed(self._acquired_indices):
+            identifier, lease = self._leases[index]
             try:
                 lease.release()
-            except Exception as error:  # preserve remaining ownership evidence
+            except Exception as error:  # preserve only disputed ownership evidence
                 errors.append(f"{identifier}:{type(error).__name__}:{error}")
-                break
-            self._acquired_count -= 1
+                retained_indices.append(index)
+        self._acquired_indices = list(reversed(retained_indices))
         return errors
 
     def __enter__(self) -> OutputBuildLeaseBatch:
@@ -202,7 +202,6 @@ def assess_output_lease_batch_preflight(
             )
         else:
             resolved_destinations[entry.inspection.destination] = entry.identifier
-
     if duplicate_destinations:
         return OutputLeaseBatchPreflight(
             status="invalid_destination_set",
