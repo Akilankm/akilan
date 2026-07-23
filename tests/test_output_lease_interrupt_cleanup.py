@@ -79,7 +79,10 @@ def test_output_lease_preserves_changed_owner_when_interrupt_rollback_is_unsafe(
 
     assert isinstance(caught.value.__cause__, KeyboardInterrupt)
     assert lease.path.is_dir()
-    assert inspect_output_build_lease(destination).status == "invalid_owner_evidence"
+    inspection = inspect_output_build_lease(destination)
+    assert inspection.status == "valid"
+    assert inspection.owner is not None
+    assert inspection.owner["hostname"] == "replacement-host"
 
 
 def test_output_lease_can_be_acquired_after_interrupted_owner_write(
