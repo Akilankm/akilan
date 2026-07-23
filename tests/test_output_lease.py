@@ -143,9 +143,11 @@ def test_output_lease_rolls_back_when_owner_fsync_fails(
 
     monkeypatch.setattr("akilan.output_lease.os.fsync", fail_fsync)
 
-    with pytest.raises(OSError, match="simulated durability failure"):
+    with pytest.raises(OutputLeaseError, match="rollback could not prove safe cleanup") as raised:
         lease.acquire()
 
+    assert isinstance(raised.value.__cause__, OSError)
+    assert str(raised.value.__cause__) == "simulated durability failure"
     assert not lease.path.exists()
     assert inspect_output_build_lease(destination).status == "absent"
 
