@@ -71,7 +71,7 @@ def inspect_output_build_lease_permissions(
             owner_mode=None,
             violations=("structural_lease_validation_failed",),
         )
-    if os.name != "posix":
+    if not _supports_posix_permission_audit():
         return OutputLeasePermissionInspection(
             destination=structural.destination,
             lease_path=structural.lease_path,
@@ -112,3 +112,9 @@ def inspect_output_build_lease_permissions(
         owner_mode=f"{owner_mode_value:04o}",
         violations=tuple(violations),
     )
+
+
+def _supports_posix_permission_audit() -> bool:
+    """Return whether POSIX mode-bit interpretation is supported."""
+
+    return os.name == "posix"
