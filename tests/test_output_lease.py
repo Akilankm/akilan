@@ -184,6 +184,22 @@ def test_inspection_rejects_malformed_and_mismatched_owner_evidence(tmp_path: Pa
     assert lease_path.is_dir()
 
 
+def test_inspection_rejects_hex_token_that_is_not_uuid4(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease_path = tmp_path / ".artifact.akilan.lock"
+    lease_path.mkdir()
+    owner = OutputBuildLease(destination).owner.to_dict()
+    owner["token"] = "0" * 32
+    (lease_path / "owner.json").write_text(json.dumps(owner), encoding="utf-8")
+
+    inspection = inspect_output_build_lease(destination)
+
+    assert inspection.status == "invalid_owner_evidence"
+    assert inspection.owner == owner
+    assert inspection.violations == ("token_must_be_lowercase_uuid4_hex",)
+    assert lease_path.is_dir()
+
+
 def test_inspection_rejects_extra_owner_fields_and_directory_entries(tmp_path: Path) -> None:
     destination = tmp_path / "artifact"
     lease = OutputBuildLease(destination).acquire()
