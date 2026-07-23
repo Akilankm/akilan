@@ -125,7 +125,7 @@ class OutputBuildLeaseBatch:
             for index, (_, lease) in enumerate(self._leases):
                 lease.acquire()
                 self._acquired_indices.append(index)
-        except Exception as acquisition_error:
+        except BaseException as acquisition_error:
             rollback_errors = self._release_acquired()
             if rollback_errors:
                 detail = "; ".join(rollback_errors)
@@ -151,7 +151,7 @@ class OutputBuildLeaseBatch:
             identifier, lease = self._leases[index]
             try:
                 lease.release()
-            except Exception as error:  # preserve only disputed ownership evidence
+            except BaseException as error:  # preserve only disputed ownership evidence
                 errors.append(f"{identifier}:{type(error).__name__}:{error}")
                 retained_indices.append(index)
         self._acquired_indices = list(reversed(retained_indices))
