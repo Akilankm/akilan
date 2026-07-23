@@ -131,6 +131,25 @@ def test_output_lease_refuses_release_when_directory_contains_extra_entry(tmp_pa
     lease.release()
 
 
+def test_output_lease_rolls_back_when_owner_fsync_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination)
+
+    def fail_fsync(file_descriptor: int) -> None:
+        assert file_descriptor >= 0
+        raise OSError("simulated durability failure")
+
+    monkeypatch.setattr("akilan.output_lease.os.fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated durability failure"):
+        lease.acquire()
+
+    assert not lease.path.exists()
+    assert inspect_output_build_lease(destination).status == "absent"
+
+
 def test_builder_fails_before_staging_when_destination_is_leased(tmp_path: Path) -> None:
     pdf = tmp_path / "sample.pdf"
     destination = tmp_path / "artifact"

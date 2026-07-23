@@ -274,7 +274,10 @@ def _owner_staging_path(lock_path: Path, owner: OutputLeaseOwner) -> Path:
 def _write_owner(lock_path: Path, owner: OutputLeaseOwner) -> None:
     payload = json.dumps(owner.to_dict(), indent=2, sort_keys=True) + "\n"
     staging_path = _owner_staging_path(lock_path, owner)
-    staging_path.write_text(payload, encoding="utf-8")
+    with staging_path.open("w", encoding="utf-8") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
     os.replace(staging_path, lock_path / "owner.json")
 
 
