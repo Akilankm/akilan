@@ -81,6 +81,21 @@ def test_output_lease_refuses_to_remove_partially_changed_owner_evidence(tmp_pat
     lease.path.rmdir()
 
 
+def test_output_lease_refuses_release_when_directory_contains_extra_entry(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination).acquire()
+    unexpected = lease.path / "unexpected.txt"
+    unexpected.write_text("foreign evidence", encoding="utf-8")
+
+    with pytest.raises(OutputLeaseError, match="ownership changed"):
+        lease.release()
+
+    assert lease.path.is_dir()
+    assert (lease.path / "owner.json").is_file()
+    unexpected.unlink()
+    lease.release()
+
+
 def test_builder_fails_before_staging_when_destination_is_leased(tmp_path: Path) -> None:
     pdf = tmp_path / "sample.pdf"
     destination = tmp_path / "artifact"
@@ -132,6 +147,27 @@ def test_inspection_rejects_malformed_and_mismatched_owner_evidence(tmp_path: Pa
     assert mismatched.owner == owner
     assert mismatched.violations == ("destination_must_match_requested_destination",)
     assert lease_path.is_dir()
+
+
+def test_inspection_rejects_extra_owner_fields_and_directory_entries(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination).acquire()
+    owner_path = lease.path / "owner.json"
+    owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    owner["unexpected"] = "value"
+    owner_path.write_text(json.dumps(owner), encoding="utf-8")
+
+    extra_field = inspect_output_build_lease(destination)
+    assert extra_field.status == "invalid_owner_evidence"
+    assert extra_field.violations == ("owner_json_must_have_exact_fields",)
+
+    owner.pop("unexpected")
+    owner_path.write_text(json.dumps(owner), encoding="utf-8")
+    (lease.path / "unexpected.txt").write_text("foreign evidence", encoding="utf-8")
+
+    extra_entry = inspect_output_build_lease(destination)
+    assert extra_entry.status == "invalid_owner_evidence"
+    assert extra_entry.violations == ("lease_directory_must_contain_only_owner_json",)
 
 
 def test_inspection_rejects_non_directory_lease_path(tmp_path: Path) -> None:
