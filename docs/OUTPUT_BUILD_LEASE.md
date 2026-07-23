@@ -25,11 +25,13 @@ Directory creation is the atomic arbitration operation. A second writer targetin
 
 `owner.json` records diagnostic evidence:
 
-- unique lease token;
+- unique lowercase UUIDv4 lease token encoded as 32 hexadecimal characters;
 - process ID;
 - hostname;
 - UTC acquisition time;
 - absolute resolved destination.
+
+Inspection validates the token structurally and semantically: hexadecimal shape alone is insufficient; the UUID version and RFC 4122 variant bits must identify a genuine UUIDv4 value. This prevents malformed or fabricated owner identities from being accepted as canonical lease evidence.
 
 The complete owner evidence object is checked again during release. AKILAN refuses to remove a lease when any protected field—including token, process ID, hostname, acquisition time, or destination—changed while the build was running.
 

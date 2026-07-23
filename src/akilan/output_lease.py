@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from uuid import uuid4
+from uuid import RFC_4122, UUID, uuid4
 
 _OWNER_KEYS = frozenset(
     {
@@ -232,7 +232,7 @@ def _owner_violations(owner: dict[str, object], destination: Path) -> list[str]:
     if set(owner) != _OWNER_KEYS:
         violations.append("owner_json_must_have_exact_fields")
     token = owner.get("token")
-    if not isinstance(token, str) or len(token) != 32 or any(char not in "0123456789abcdef" for char in token):
+    if not isinstance(token, str) or not _is_uuid4_token(token):
         violations.append("token_must_be_lowercase_uuid4_hex")
     process_id = owner.get("process_id")
     if not isinstance(process_id, int) or isinstance(process_id, bool) or process_id <= 0:
@@ -247,6 +247,16 @@ def _owner_violations(owner: dict[str, object], destination: Path) -> list[str]:
     if recorded_destination != str(destination):
         violations.append("destination_must_match_requested_destination")
     return violations
+
+
+def _is_uuid4_token(value: str) -> bool:
+    if len(value) != 32 or any(char not in "0123456789abcdef" for char in value):
+        return False
+    try:
+        parsed = UUID(hex=value)
+    except ValueError:
+        return False
+    return parsed.hex == value and parsed.version == 4 and parsed.variant == RFC_4122
 
 
 def _is_utc_datetime(value: str) -> bool:
