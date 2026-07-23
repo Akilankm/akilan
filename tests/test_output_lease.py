@@ -9,6 +9,7 @@ import pytest
 from akilan import ExtractionConfig, PDFArtifactBuilder
 from akilan.output_lease import (
     OutputBuildLease,
+    OutputLeaseContextError,
     OutputLeaseError,
     inspect_output_build_lease,
 )
@@ -46,6 +47,40 @@ def test_output_lease_is_released_when_build_scope_fails(tmp_path: Path) -> None
         raise RuntimeError("expected failure")
 
     assert not lease.path.exists()
+
+
+def test_output_lease_context_preserves_body_and_cleanup_failures(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination)
+
+    with pytest.raises(OutputLeaseContextError) as raised, lease:
+        owner_path = lease.path / "owner.json"
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        owner["hostname"] = "changed-host"
+        owner_path.write_text(json.dumps(owner), encoding="utf-8")
+        raise RuntimeError("build failed")
+
+    error = raised.value
+    assert isinstance(error.body_error, RuntimeError)
+    assert str(error.body_error) == "build failed"
+    assert isinstance(error.release_error, OutputLeaseError)
+    assert "ownership changed" in str(error.release_error)
+    assert error.__cause__ is error.body_error
+    assert inspect_output_build_lease(destination).status == "valid"
+
+
+def test_output_lease_context_keeps_cleanup_only_error_type(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination)
+
+    with pytest.raises(OutputLeaseError, match="ownership changed") as raised, lease:
+        owner_path = lease.path / "owner.json"
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        owner["hostname"] = "changed-host"
+        owner_path.write_text(json.dumps(owner), encoding="utf-8")
+
+    assert not isinstance(raised.value, OutputLeaseContextError)
+    assert inspect_output_build_lease(destination).status == "valid"
 
 
 def test_output_lease_refuses_to_remove_changed_ownership(tmp_path: Path) -> None:
