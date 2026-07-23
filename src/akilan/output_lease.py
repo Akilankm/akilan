@@ -109,8 +109,14 @@ class OutputBuildLease:
 
         try:
             _write_owner(self.path, self.owner)
-        except BaseException:
-            self.path.rmdir()
+        except BaseException as acquisition_error:
+            try:
+                _rollback_owner_publication(self.path, self.owner)
+            except Exception as rollback_error:
+                raise OutputLeaseError(
+                    "Artifact output lease owner publication failed and rollback "
+                    f"could not prove safe cleanup: {self.path}"
+                ) from acquisition_error
             raise
         self._acquired = True
         return self
@@ -233,9 +239,34 @@ def _is_utc_datetime(value: str) -> bool:
     return parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
 
 
+def _owner_staging_path(lock_path: Path, owner: OutputLeaseOwner) -> Path:
+    return lock_path / f".owner-{owner.token}.tmp"
+
+
 def _write_owner(lock_path: Path, owner: OutputLeaseOwner) -> None:
     payload = json.dumps(owner.to_dict(), indent=2, sort_keys=True) + "\n"
-    (lock_path / "owner.json").write_text(payload, encoding="utf-8")
+    staging_path = _owner_staging_path(lock_path, owner)
+    staging_path.write_text(payload, encoding="utf-8")
+    os.replace(staging_path, lock_path / "owner.json")
+
+
+def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> None:
+    staging_path = _owner_staging_path(lock_path, owner)
+    if staging_path.exists():
+        if staging_path.is_symlink() or not staging_path.is_file():
+            raise OutputLeaseError("Owner staging evidence changed during acquisition")
+        staging_path.unlink()
+
+    owner_path = lock_path / "owner.json"
+    if owner_path.exists():
+        if owner_path.is_symlink() or not owner_path.is_file():
+            raise OutputLeaseError("Owner evidence changed during acquisition")
+        persisted_owner = _read_owner(lock_path)
+        if persisted_owner != owner.to_dict():
+            raise OutputLeaseError("Owner evidence changed during acquisition")
+        owner_path.unlink()
+
+    lock_path.rmdir()
 
 
 def _read_owner(lock_path: Path) -> dict[str, object] | None:
