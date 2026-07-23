@@ -37,6 +37,8 @@ The complete owner evidence object is checked again during release. AKILAN refus
 
 The lease is released when the protected build scope exits, including extraction and publication failures. Existing atomic-output guarantees remain unchanged: failed builds do not replace the last known-good artifact.
 
+When the protected `with` block fails and lease cleanup also fails, AKILAN raises `OutputLeaseContextError`. Its `body_error` and `release_error` attributes preserve both failures, while the original protected-operation failure remains the exception cause. This prevents a cleanup failure from hiding the extraction or publication root cause. When only cleanup fails, the existing `OutputLeaseError` behavior is unchanged.
+
 AKILAN does **not** automatically delete apparently stale leases. PID reuse, containers, network filesystems, and multiple hosts make automatic stale-owner inference unsafe. An abandoned lease must be removed only after an operator independently confirms that no writer is using the destination.
 
 ## Concurrency boundary
