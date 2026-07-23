@@ -33,6 +33,8 @@ Directory creation is the atomic arbitration operation. A second writer targetin
 
 Inspection validates the token structurally and semantically: hexadecimal shape alone is insufficient; the UUID version and RFC 4122 variant bits must identify a genuine UUIDv4 value. This prevents malformed or fabricated owner identities from being accepted as canonical lease evidence.
 
+Owner evidence is first written to a token-specific staging file, flushed, and synchronized with `fsync()` before atomic promotion to `owner.json`. If writing or synchronization fails, acquisition rolls back the staging evidence and lease directory before returning control. A lease is never reported as acquired unless the complete owner payload has crossed this durability boundary.
+
 The complete owner evidence object is checked again during release. AKILAN refuses to remove a lease when any protected field—including token, process ID, hostname, acquisition time, or destination—changed while the build was running.
 
 ## Failure behavior
