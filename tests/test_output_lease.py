@@ -64,6 +64,23 @@ def test_output_lease_refuses_to_remove_changed_ownership(tmp_path: Path) -> Non
     lease.path.rmdir()
 
 
+def test_output_lease_refuses_to_remove_partially_changed_owner_evidence(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination).acquire()
+    owner_path = lease.path / "owner.json"
+    owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    owner["hostname"] = "replacement-host"
+    owner_path.write_text(json.dumps(owner), encoding="utf-8")
+
+    with pytest.raises(OutputLeaseError, match="ownership changed"):
+        lease.release()
+
+    assert lease.path.is_dir()
+    assert json.loads(owner_path.read_text(encoding="utf-8"))["token"] == lease.owner.token
+    owner_path.unlink()
+    lease.path.rmdir()
+
+
 def test_builder_fails_before_staging_when_destination_is_leased(tmp_path: Path) -> None:
     pdf = tmp_path / "sample.pdf"
     destination = tmp_path / "artifact"
