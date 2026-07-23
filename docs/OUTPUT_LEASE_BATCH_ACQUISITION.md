@@ -22,7 +22,7 @@ The batch boundary:
 - rejects empty identifiers, empty sets, duplicate resolved destinations, active leases, and malformed lease evidence;
 - acquires destinations in deterministic identifier order;
 - uses each destination's atomic lease-directory creation as the arbitration operation;
-- rolls back leases acquired by the current batch when a later acquisition loses a race;
+- rolls back leases acquired by the current batch when a later acquisition loses a race or process-level interruption occurs;
 - releases independently verified leases in reverse acquisition order;
 - never removes, repairs, or declares foreign lease evidence stale;
 - preserves changed owner evidence and fails closed when release ownership cannot be proven.
@@ -32,6 +32,8 @@ A successful read-only batch preflight is not a reservation. Use `OutputBuildLea
 ## Failure semantics
 
 If a competing writer claims a later destination after construction but before acquisition completes, the batch releases every earlier lease it acquired and propagates the acquisition failure. The competing writer's lease remains untouched.
+
+Partial acquisition is also rolled back when acquisition is interrupted by process-control exceptions such as `KeyboardInterrupt` or `SystemExit`. After safe cleanup, the original interrupt is re-raised unchanged. If rollback itself cannot prove ownership, AKILAN raises `OutputLeaseError` chained from the original interrupt and retains only the disputed evidence.
 
 If rollback or release cannot prove ownership of one acquired lease, that lease evidence is retained for investigation. Cleanup continues for every other independently verified lease, so a disputed destination does not leave unrelated outputs locked. The operation raises `OutputLeaseError` containing every release failure after all safe cleanup attempts complete.
 
