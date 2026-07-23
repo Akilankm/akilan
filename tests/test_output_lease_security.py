@@ -25,7 +25,10 @@ def test_permission_inspection_fails_closed_when_platform_is_unsupported(
     destination = tmp_path / "artifact"
 
     with OutputBuildLease(destination):
-        monkeypatch.setattr("akilan.output_lease_security.os.name", "nt")
+        monkeypatch.setattr(
+            "akilan.output_lease_security._supports_posix_permission_audit",
+            lambda: False,
+        )
         inspection = inspect_output_build_lease_permissions(destination)
 
         assert inspection.status == "unsupported"
