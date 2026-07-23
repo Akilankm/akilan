@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Akilankm/akilan/schemas/document-artifact-v1.schema.json",
+  "title": "AKILAN Document Artifact v1",
+  "description": "Stable additive contract for AKILAN canonical document artifacts. Unknown extension fields are permitted within schema major version 1.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generator",
+    "source",
+    "document",
+    "table_of_contents",
+    "embedded_files",
+    "pages",
+    "statistics",
+    "artifact_files"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1(?:\\.[0-9]+){0,2}(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "generator": {"type": "object"},
+    "source": {"type": "object"},
+    "document": {"type": "object"},
+    "table_of_contents": {"type": "array"},
+    "embedded_files": {"type": "array"},
+    "pages": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/page"}
+    },
+    "statistics": {"type": "object"},
+    "artifact_files": {"type": "object"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "bbox": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["x0", "y0", "x1", "y1"],
+          "properties": {
+            "x0": {"type": "number"},
+            "y0": {"type": "number"},
+            "x1": {"type": "number"},
+            "y1": {"type": "number"},
+            "width": {"type": "number"},
+            "height": {"type": "number"}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "array",
+          "prefixItems": [
+            {"type": "number"},
+            {"type": "number"},
+            {"type": "number"},
+            {"type": "number"}
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        }
+      ]
+    },
+    "reading_order_item": {
+      "type": "object",
+      "required": ["order", "element_type", "element_id", "bbox"],
+      "properties": {
+        "order": {"type": "integer", "minimum": 0},
+        "element_type": {
+          "type": "string",
+          "enum": ["text", "table", "image", "drawing"]
+        },
+        "element_id": {"type": "string", "minLength": 1},
+        "bbox": {"$ref": "#/$defs/bbox"},
+        "column_index": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "page_index",
+        "page_number",
+        "label",
+        "width",
+        "height",
+        "rotation",
+        "mediabox",
+        "cropbox",
+        "text_blocks",
+        "tables",
+        "images",
+        "drawings",
+        "links",
+        "annotations",
+        "widgets",
+        "reading_order",
+        "metrics"
+      ],
+      "properties": {
+        "page_index": {"type": "integer", "minimum": 0},
+        "page_number": {"type": "integer", "minimum": 1},
+        "label": {"type": "string"},
+        "width": {"type": "number", "exclusiveMinimum": 0},
+        "height": {"type": "number", "exclusiveMinimum": 0},
+        "rotation": {"type": "integer"},
+        "mediabox": {"$ref": "#/$defs/bbox"},
+        "cropbox": {"$ref": "#/$defs/bbox"},
+        "text_blocks": {"type": "array"},
+        "tables": {"type": "array"},
+        "images": {"type": "array"},
+        "drawings": {"type": "array"},
+        "links": {"type": "array"},
+        "annotations": {"type": "array"},
+        "widgets": {"type": "array"},
+        "reading_order": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reading_order_item"}
+        },
+        "metrics": {"type": "object"},
+        "markdown_path": {"type": ["string", "null"]},
+        "json_path": {"type": ["string", "null"]},
+        "render_path": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}

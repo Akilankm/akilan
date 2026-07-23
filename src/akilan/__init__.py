@@ -1,51 +1,153 @@
-from .atoms import PdfAtomExtractor
-from .models import (
-    AtomDebug,
-    BBox,
-    DynamicPosition,
-    GroupChunk,
-    ImageChunk,
-    NormalizedPosition,
-    NormalizedSize,
-    PageChunk,
-    PageChunks,
-    TableChunk,
-    TextChunk,
+"""AKILAN: geometry-aware PDF artifact construction with PyMuPDF."""
+
+from .api import build_artifact
+from .artifact_directory import validate_artifact_directory
+from .artifact_directory_intake import (
+    ArtifactDirectoryIntakeReport,
+    assess_artifact_directory_intake,
 )
-from .page_parser import PdfPageParser
-from .page_renderer import PdfPageRenderer
-from .views import (
-    document_to_dict,
-    get_all_chunks,
-    get_group_chunks,
-    get_image_chunks,
-    get_page_text,
-    get_table_chunks,
-    get_text_chunks,
-    page_to_dict,
+from .artifact_directory_intake_batch import (
+    ArtifactDirectoryBatchIntakeEntry,
+    ArtifactDirectoryBatchIntakeReport,
+    assess_artifact_directory_batch_intake,
 )
+from .artifact_directory_integrity import (
+    ArtifactDirectoryFile,
+    ArtifactDirectoryIntegrityReport,
+    assess_artifact_directory_integrity,
+)
+from .artifact_intake import ArtifactIntakeReport, assess_artifact_intake
+from .artifact_intake_batch import (
+    ArtifactBatchIntakeEntry,
+    ArtifactBatchIntakeReport,
+    assess_artifact_batch_intake,
+)
+from .artifact_integrity import validate_page_identities
+from .artifact_loader import load_artifact_directory
+from .benchmark_acceptance import (
+    BenchmarkAcceptanceReport,
+    BenchmarkThresholds,
+    BenchmarkViolation,
+    evaluate_corpus,
+    write_benchmark_acceptance_report,
+)
+from .benchmark_cache_validation import (
+    BenchmarkCacheViolation,
+    validate_benchmark_cache_entry,
+)
+from .build_profile import ArtifactOperationProfile
+from .cache_identity import ArtifactCacheIdentity, build_artifact_cache_identity
+from .cache_orchestration import ArtifactBuildResolution, build_or_resolve_artifact
+from .cache_record import (
+    ArtifactCacheResolution,
+    ArtifactCacheValidation,
+    resolve_artifact_cache,
+    validate_artifact_cache,
+)
+from .config import ExtractionConfig
+from .corpus import (
+    CorpusDownload,
+    CorpusSource,
+    CorpusSourceError,
+    CorpusVerification,
+    load_corpus_sources,
+    sync_corpus,
+    verify_corpus,
+)
+from .element_identity import (
+    DuplicateElementIdentity,
+    ElementIdentityOccurrence,
+    find_duplicate_element_ids,
+)
+from .extraction import PDFArtifactBuilder, PDFExtractionError
+from .geometry import BBox
+from .manifest_schema import validate_manifest
+from .models import DocumentArtifact, PageArtifact
+from .page_selection import PageSelectionError, parse_page_selection
+from .persisted_graph_validation import (
+    PersistedGraphViolation,
+    find_persisted_graph_violations,
+)
+from .relationship_validation import (
+    DuplicateFootnoteMarker,
+    find_duplicate_footnote_markers,
+)
+from .schema import ArtifactSchemaError, SchemaViolation, validate_artifact
+from .schema_compatibility import (
+    SchemaCompatibilityReport,
+    SchemaCompatibilityStatus,
+    SchemaVersion,
+    assess_schema_compatibility,
+    parse_schema_version,
+)
+from .schema_resource import load_artifact_json_schema
+from .version import __version__
 
 __all__ = [
+    "ArtifactBatchIntakeEntry",
+    "ArtifactBatchIntakeReport",
+    "ArtifactBuildResolution",
+    "ArtifactCacheIdentity",
+    "ArtifactCacheResolution",
+    "ArtifactCacheValidation",
+    "ArtifactDirectoryBatchIntakeEntry",
+    "ArtifactDirectoryBatchIntakeReport",
+    "ArtifactDirectoryFile",
+    "ArtifactDirectoryIntakeReport",
+    "ArtifactDirectoryIntegrityReport",
+    "ArtifactIntakeReport",
+    "ArtifactOperationProfile",
+    "ArtifactSchemaError",
     "BBox",
-    "AtomDebug",
-    "NormalizedPosition",
-    "NormalizedSize",
-    "DynamicPosition",
-    "TextChunk",
-    "ImageChunk",
-    "TableChunk",
-    "GroupChunk",
-    "PageChunk",
-    "PageChunks",
-    "PdfAtomExtractor",
-    "PdfPageParser",
-    "PdfPageRenderer",
-    "get_all_chunks",
-    "get_text_chunks",
-    "get_image_chunks",
-    "get_table_chunks",
-    "get_group_chunks",
-    "get_page_text",
-    "page_to_dict",
-    "document_to_dict",
+    "BenchmarkAcceptanceReport",
+    "BenchmarkCacheViolation",
+    "BenchmarkThresholds",
+    "BenchmarkViolation",
+    "CorpusDownload",
+    "CorpusSource",
+    "CorpusSourceError",
+    "CorpusVerification",
+    "DocumentArtifact",
+    "DuplicateElementIdentity",
+    "DuplicateFootnoteMarker",
+    "ElementIdentityOccurrence",
+    "ExtractionConfig",
+    "PDFArtifactBuilder",
+    "PDFExtractionError",
+    "PageArtifact",
+    "PageSelectionError",
+    "PersistedGraphViolation",
+    "SchemaCompatibilityReport",
+    "SchemaCompatibilityStatus",
+    "SchemaVersion",
+    "SchemaViolation",
+    "__version__",
+    "assess_artifact_batch_intake",
+    "assess_artifact_directory_batch_intake",
+    "assess_artifact_directory_intake",
+    "assess_artifact_directory_integrity",
+    "assess_artifact_intake",
+    "assess_schema_compatibility",
+    "build_artifact",
+    "build_artifact_cache_identity",
+    "build_or_resolve_artifact",
+    "evaluate_corpus",
+    "find_duplicate_element_ids",
+    "find_duplicate_footnote_markers",
+    "find_persisted_graph_violations",
+    "load_artifact_directory",
+    "load_artifact_json_schema",
+    "load_corpus_sources",
+    "parse_page_selection",
+    "parse_schema_version",
+    "resolve_artifact_cache",
+    "sync_corpus",
+    "validate_artifact",
+    "validate_artifact_cache",
+    "validate_artifact_directory",
+    "validate_benchmark_cache_entry",
+    "validate_manifest",
+    "validate_page_identities",
+    "verify_corpus",
+    "write_benchmark_acceptance_report",
 ]

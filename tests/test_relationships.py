@@ -1,0 +1,427 @@
+from __future__ import annotations
+
+from akilan.geometry import BBox
+from akilan.models import PageArtifact, ReadingOrderItem, TableElement, TextBlock
+from akilan.relationships import infer_document_relationships
+
+
+def _block(
+    element_id: str,
+    role: str,
+    y0: float,
+    y1: float,
+    *,
+    x0: float = 50.0,
+    x1: float = 500.0,
+    confidence: float = 1.0,
+    text: str | None = None,
+) -> TextBlock:
+    return TextBlock(
+        id=element_id,
+        bbox=BBox(x0, y0, x1, y1),
+        text=text if text is not None else element_id,
+        lines=[],
+        source_block_number=None,
+        semantic_role=role,  # type: ignore[arg-type]
+        semantic_confidence=confidence,
+    )
+
+
+def _page(index: int, blocks: list[TextBlock]) -> PageArtifact:
+    return PageArtifact(
+        page_index=index,
+        page_number=index + 1,
+        label=str(index + 1),
+        width=595.0,
+        height=842.0,
+        rotation=0,
+        mediabox=BBox(0.0, 0.0, 595.0, 842.0),
+        cropbox=BBox(0.0, 0.0, 595.0, 842.0),
+        text_blocks=blocks,
+        reading_order=[
+            ReadingOrderItem(
+                order=order,
+                element_type="text",
+                element_id=block.id,
+                bbox=block.bbox,
+            )
+            for order, block in enumerate(blocks)
+        ],
+    )
+
+
+def test_relationships_preserve_cross_page_section_context() -> None:
+    title = _block("title", "document_title", 40, 70)
+    heading = _block("heading", "heading_1", 100, 125)
+    first_body = _block("first-body", "paragraph", 140, 190)
+    second_body = _block("second-body", "paragraph", 80, 130)
+    subsection = _block("subsection", "heading_2", 150, 175)
+    nested_body = _block("nested-body", "paragraph", 190, 240)
+
+    pages = [
+        _page(0, [title, heading, first_body]),
+        _page(1, [second_body, subsection, nested_body]),
+    ]
+
+    infer_document_relationships(pages)
+
+    assert heading.relationships["parent_heading"] == ["title"]
+    assert first_body.relationships["section_heading"] == ["heading"]
+    assert second_body.relationships["section_heading"] == ["heading"]
+    assert subsection.relationships["parent_heading"] == ["heading"]
+    assert nested_body.relationships["section_heading"] == ["subsection"]
+    assert heading.relationships["contains"] == ["first-body", "second-body", "subsection"]
+
+    page_two_evidence = pages[1].metrics["relationship_evidence"]
+    assert {
+        "source_id": "second-body",
+        "target_id": "heading",
+        "relationship": "section_heading",
+        "rule_id": "active-section-membership-v1",
+        "confidence": 1.0,
+    } in page_two_evidence
+    page_one_contains = [
+        item
+        for item in pages[0].metrics["relationship_evidence"]
+        if item["source_id"] == "heading" and item["relationship"] == "contains"
+    ]
+    assert {item["target_id"] for item in page_one_contains} == {
+        "first-body",
+        "second-body",
+        "subsection",
+    }
+
+
+def test_caption_links_only_to_nearby_overlapping_visual() -> None:
+    heading = _block("heading", "heading_1", 60, 90)
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=330)
+    page = _page(0, [heading, caption])
+    page.tables = [
+        TableElement(
+            id="near-table",
+            bbox=BBox(70, 200, 340, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["value"]],
+            cells=[[70.0, 200.0, 340.0, 310.0]],
+            markdown="| value |",
+        ),
+        TableElement(
+            id="far-table",
+            bbox=BBox(400, 200, 560, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["other"]],
+            cells=[[400.0, 200.0, 560.0, 310.0]],
+            markdown="| other |",
+        ),
+    ]
+
+    infer_document_relationships([page])
+
+    assert caption.relationships["describes"] == ["near-table"]
+    assert caption.relationships["section_heading"] == ["heading"]
+    describes = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "describes"
+    )
+    assert describes["source_id"] == "caption"
+    assert describes["target_id"] == "near-table"
+    assert describes["rule_id"] == "caption-proximity-overlap-v2"
+    assert 0.55 <= describes["confidence"] <= 1.0
+
+
+def test_caption_prefers_stronger_combined_evidence_over_smallest_gap() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=330)
+    page = _page(0, [caption])
+    page.tables = [
+        TableElement(
+            id="closest-but-narrow",
+            bbox=BBox(290, 250, 520, 315),
+            row_count=1,
+            column_count=1,
+            rows=[["narrow"]],
+            cells=[[290.0, 250.0, 520.0, 315.0]],
+            markdown="| narrow |",
+        ),
+        TableElement(
+            id="stronger-overlap",
+            bbox=BBox(70, 190, 340, 300),
+            row_count=1,
+            column_count=1,
+            rows=[["strong"]],
+            cells=[[70.0, 190.0, 340.0, 300.0]],
+            markdown="| strong |",
+        ),
+    ]
+
+    infer_document_relationships([page])
+
+    assert caption.relationships["describes"] == ["stronger-overlap"]
+    evidence = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "describes"
+    )
+    assert evidence["target_id"] == "stronger-overlap"
+    assert "relationship_ambiguities" not in page.metrics
+
+
+def test_ambiguous_caption_candidates_remain_unlinked_with_diagnostics() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=520)
+    page = _page(0, [caption])
+    page.tables = [
+        TableElement(
+            id="left-table",
+            bbox=BBox(70, 200, 285, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["left"]],
+            cells=[[70.0, 200.0, 285.0, 310.0]],
+            markdown="| left |",
+        ),
+        TableElement(
+            id="right-table",
+            bbox=BBox(315, 200, 530, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["right"]],
+            cells=[[315.0, 200.0, 530.0, 310.0]],
+            markdown="| right |",
+        ),
+    ]
+
+    infer_document_relationships([page])
+
+    assert "describes" not in caption.relationships
+    assert page.metrics["relationship_ambiguities"] == [
+        {
+            "source_id": "caption",
+            "relationship": "describes",
+            "rule_id": "caption-candidate-margin-v1",
+            "candidate_ids": ["left-table", "right-table"],
+            "confidence_margin": 0.0,
+            "minimum_margin": 0.08,
+        }
+    ]
+    assert not any(
+        item["relationship"] == "describes"
+        for item in page.metrics.get("relationship_evidence", [])
+    )
+
+
+def test_caption_ambiguity_diagnostics_are_idempotent_and_input_order_independent() -> None:
+    caption = _block("caption", "caption", 320, 340, x0=80, x1=520)
+    page = _page(0, [caption])
+    tables = [
+        TableElement(
+            id="left-table",
+            bbox=BBox(70, 200, 285, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["left"]],
+            cells=[[70.0, 200.0, 285.0, 310.0]],
+            markdown="| left |",
+        ),
+        TableElement(
+            id="right-table",
+            bbox=BBox(315, 200, 530, 310),
+            row_count=1,
+            column_count=1,
+            rows=[["right"]],
+            cells=[[315.0, 200.0, 530.0, 310.0]],
+            markdown="| right |",
+        ),
+    ]
+    page.tables = list(reversed(tables))
+
+    infer_document_relationships([page])
+    first = [dict(item) for item in page.metrics["relationship_ambiguities"]]
+    page.tables = tables
+    infer_document_relationships([page])
+
+    assert page.metrics["relationship_ambiguities"] == first
+
+
+def test_explicit_bracketed_footnote_links_all_preceding_references() -> None:
+    first = _block(
+        "first-reference",
+        "paragraph",
+        100,
+        145,
+        text="The first claim is supported by evidence [1].",
+        confidence=0.9,
+    )
+    second = _block(
+        "second-reference",
+        "list_item",
+        170,
+        205,
+        text="A second explicit citation [1] is retained.",
+        confidence=0.8,
+    )
+    footnote = _block(
+        "footnote-1",
+        "footnote",
+        730,
+        760,
+        text="[1] Public source details.",
+        confidence=1.0,
+    )
+    page = _page(0, [first, second, footnote])
+
+    infer_document_relationships([page])
+
+    assert footnote.relationships["footnote_reference"] == [
+        "first-reference",
+        "second-reference",
+    ]
+    assert first.relationships["has_footnote"] == ["footnote-1"]
+    assert second.relationships["has_footnote"] == ["footnote-1"]
+    evidence = page.metrics["relationship_evidence"]
+    footnote_edges = [
+        item for item in evidence if item["rule_id"] == "explicit-bracketed-footnote-marker-v1"
+    ]
+    assert footnote_edges == [
+        {
+            "source_id": "first-reference",
+            "target_id": "footnote-1",
+            "relationship": "has_footnote",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.855,
+        },
+        {
+            "source_id": "footnote-1",
+            "target_id": "first-reference",
+            "relationship": "footnote_reference",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.855,
+        },
+        {
+            "source_id": "footnote-1",
+            "target_id": "second-reference",
+            "relationship": "footnote_reference",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.76,
+        },
+        {
+            "source_id": "second-reference",
+            "target_id": "footnote-1",
+            "relationship": "has_footnote",
+            "rule_id": "explicit-bracketed-footnote-marker-v1",
+            "confidence": 0.76,
+        },
+    ]
+
+
+def test_footnote_rule_abstains_without_exact_preceding_marker() -> None:
+    similar = _block(
+        "similar",
+        "paragraph",
+        100,
+        145,
+        text="Version 1 is discussed, but no bracketed source marker is present.",
+    )
+    later = _block(
+        "later",
+        "paragraph",
+        780,
+        810,
+        text="This marker appears after the footnote [1].",
+    )
+    footnote = _block(
+        "footnote-1",
+        "footnote",
+        730,
+        760,
+        text="[1] Public source details.",
+    )
+    unstructured = _block(
+        "unstructured-footnote",
+        "footnote",
+        760,
+        775,
+        text="1. This definition is intentionally outside the supported contract.",
+    )
+    page = _page(0, [similar, footnote, unstructured, later])
+
+    infer_document_relationships([page])
+
+    assert "footnote_reference" not in footnote.relationships
+    assert "footnote_reference" not in unstructured.relationships
+    assert "has_footnote" not in similar.relationships
+    assert "has_footnote" not in later.relationships
+    assert not any(
+        item["rule_id"] == "explicit-bracketed-footnote-marker-v1"
+        for item in page.metrics.get("relationship_evidence", [])
+    )
+
+
+def test_footnote_relationships_are_idempotent_and_preserve_external_edges() -> None:
+    source = _block(
+        "source",
+        "paragraph",
+        100,
+        145,
+        text="The result is externally validated [a].",
+    )
+    footnote = _block(
+        "footnote-a",
+        "footnote",
+        730,
+        760,
+        text="[a] Validation source.",
+    )
+    source.relationships["external_reference"] = ["annotation-1"]
+    page = _page(0, [source, footnote])
+
+    infer_document_relationships([page])
+    first_source_relationships = {
+        key: list(values) for key, values in source.relationships.items()
+    }
+    first_footnote_relationships = {
+        key: list(values) for key, values in footnote.relationships.items()
+    }
+    first_evidence = [dict(item) for item in page.metrics["relationship_evidence"]]
+    infer_document_relationships([page])
+
+    assert source.relationships == first_source_relationships
+    assert footnote.relationships == first_footnote_relationships
+    assert page.metrics["relationship_evidence"] == first_evidence
+    assert source.relationships["external_reference"] == ["annotation-1"]
+
+
+def test_relationship_evidence_uses_bounded_semantic_confidence() -> None:
+    heading = _block("heading", "heading_1", 60, 90, confidence=0.95)
+    body = _block("body", "paragraph", 110, 160, confidence=0.72)
+    page = _page(0, [heading, body])
+
+    infer_document_relationships([page])
+
+    section_edge = next(
+        item
+        for item in page.metrics["relationship_evidence"]
+        if item["relationship"] == "section_heading"
+    )
+    assert section_edge["confidence"] == 0.72
+    assert section_edge["rule_id"] == "active-section-membership-v1"
+
+
+def test_relationship_inference_is_idempotent_and_preserves_external_edges() -> None:
+    heading = _block("heading", "heading_1", 60, 90)
+    body = _block("body", "paragraph", 110, 160)
+    body.relationships["external_reference"] = ["annotation-1"]
+    page = _page(0, [heading, body])
+    page.metrics["external_metric"] = {"owner": "another-pass"}
+
+    infer_document_relationships([page])
+    first_relationships = {key: list(values) for key, values in body.relationships.items()}
+    first_evidence = [dict(item) for item in page.metrics["relationship_evidence"]]
+    infer_document_relationships([page])
+
+    assert body.relationships == first_relationships
+    assert page.metrics["relationship_evidence"] == first_evidence
+    assert page.metrics["external_metric"] == {"owner": "another-pass"}
+    assert body.relationships["external_reference"] == ["annotation-1"]
+    assert body.relationships["section_heading"] == ["heading"]

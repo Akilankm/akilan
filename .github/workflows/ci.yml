@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest --cov=akilan --cov-report=term-missing
+      - name: Build
+        if: matrix.python-version == '3.12'
+        run: python -m build
+      - name: Validate user feedback contract
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/validate_user_feedback.py user_feedback.md \
+            --report artifacts/user-feedback-contract.json
+      - name: Validate committed notebook contract
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/validate_notebook_contract.py \
+            notebooks/pdf_artifact_workbench.ipynb \
+            --report artifacts/notebook-contract.json
+      - name: Generate copyright-free benchmark corpus
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/generate_ci_benchmark_corpus.py artifacts/ci-corpus \
+            --evidence artifacts/ci-benchmark/generated-corpus.json
+      - name: Run guarded benchmark acceptance gate
+        if: matrix.python-version == '3.12'
+        run: |
+          akilan-guarded-benchmark artifacts/ci-corpus \
+            --output-root artifacts/ci-benchmark/artifacts \
+            --report artifacts/ci-benchmark/report.json \
+            --acceptance-report artifacts/ci-benchmark/acceptance.json \
+            --guard-report artifacts/ci-benchmark/source-guard.json \
+            --performance-report artifacts/ci-benchmark/performance.json \
+            --execution-identity-report artifacts/ci-benchmark/execution-identity.json \
+            --min-ordered-element-ratio 0.75 \
+            --no-cache
+      - name: Validate guarded benchmark evidence
+        if: matrix.python-version == '3.12'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          guard_report = Path("artifacts/ci-benchmark/source-guard.json")
+          guard = json.loads(guard_report.read_text(encoding="utf-8"))
+          assert guard["accepted"] is True
+          assert guard["total_count"] > 0
+          assert guard["accepted_count"] == guard["total_count"]
+          assert guard["rejected_count"] == 0
+          assert len(guard["fingerprint"]) == 64
+
+          performance_report = Path("artifacts/ci-benchmark/performance.json")
+          performance = json.loads(performance_report.read_text(encoding="utf-8"))
+          assert performance["measured_case_count"] == guard["total_count"]
+          assert performance["total_page_count"] > 0
+          assert performance["total_source_size_bytes"] > 0
+          assert performance["total_output_size_bytes"] > 0
+          assert performance["total_elapsed_seconds"] >= 0
+          assert performance["pages_per_second"] >= 0
+          assert performance["source_mib_per_second"] >= 0
+          assert performance["peak_python_memory_bytes"] >= 0
+          assert isinstance(performance["phase_seconds"], dict)
+          assert all(value >= 0 for value in performance["phase_seconds"].values())
+
+          identity_report = Path("artifacts/ci-benchmark/execution-identity.json")
+          identity = json.loads(identity_report.read_text(encoding="utf-8"))
+          assert identity["valid"] is True
+          assert len(identity["fingerprint"]) == 64
+          assert identity["python_version"]
+          assert identity["pymupdf_version"]
+          assert identity["akilan_version"]
+          assert identity["extraction_config"]["overwrite"] is True
+          assert identity["extraction_config"]["render_pages"] is False
+          PY
+      - name: Validate generated artifacts
+        if: matrix.python-version == '3.12'
+        run: |
+          count=0
+          for artifact in artifacts/ci-benchmark/artifacts/*; do
+            [ -d "$artifact" ] || continue
+            akilan validate "$artifact"
+            count=$((count + 1))
+          done
+          test "$count" -gt 0
+      - name: Upload benchmark evidence
+        if: matrix.python-version == '3.12' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-benchmark-evidence
+          path: |
+            artifacts/user-feedback-contract.json
+            artifacts/notebook-contract.json
+            artifacts/ci-corpus
+            artifacts/ci-benchmark
+          if-no-files-found: error
+          retention-days: 14

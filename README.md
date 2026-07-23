@@ -1,122 +1,137 @@
 # AKILAN
 
-**Adaptive Knowledge Ingestion Layer for Analytics Nodes**
+**Adaptive Knowledge Ingestion and Layout Analysis**
 
-AKILAN is a lightweight Python library built on top of **PyMuPDF** for structured PDF text extraction.
-It provides clean APIs to extract text **block-by-block** or **page-by-page** while preserving layout order.
+AKILAN converts a PDF into a deterministic, geometry-aware artifact for AI systems. It uses **PyMuPDF as its only runtime dependency** and preserves the native evidence required to reason about a document instead of flattening every page into plain text.
 
-The library is designed for **AI pipelines, document processing, and Retrieval-Augmented Generation (RAG) workflows**.
+## What the artifact captures
 
----
+| Layer | Native PyMuPDF evidence | Artifact output |
+|---|---|---|
+| Document | metadata, permissions, page mode/layout, TOC, embedded files | `manifest.json`, `document.json` |
+| Page geometry | media box, crop box, rotation, labels, dimensions | per-page JSON |
+| Text | blocks, lines, spans, fonts, sizes, colors, flags, bounding boxes | structured JSON + Markdown + text |
+| Tables | `Page.find_tables()` geometry and cell content | rows, cells, Markdown, reading-order references |
+| Images | XObjects, inline image blocks, occurrences, transforms, dimensions | extracted binary assets + geometry |
+| Vector graphics | paths, fills, strokes, layers, sequence numbers | drawing elements in page JSON |
+| Interactivity | links, annotations, widgets/form fields | typed page elements |
+| Semantics | typography, margins, repetition, columns, spatial overlap | deterministic roles and reading order |
 
-## Features
-
-* Extract **structured text blocks** from PDFs
-* Preserve **top-to-bottom reading order**
-* Access **bounding box coordinates** for layout-aware processing
-* Lightweight wrapper around **PyMuPDF**
-* Designed for **AI-ready document ingestion pipelines**
-
----
+No LLM, cloud service, OCR engine, computer-vision model, Pillow, Camelot, or pdfplumber is required.
 
 ## Installation
 
 ```bash
-pip install akilan
+pip install -e ".[dev]"
 ```
 
----
-
-## Quick Example
+## Python API
 
 ```python
-from akilan import PdfTextExtractor
+from akilan import ExtractionConfig, PDFArtifactBuilder
 
-extractor = PdfTextExtractor("document.pdf")
+config = ExtractionConfig(
+    render_pages=True,
+    include_characters=False,
+    overwrite=True,
+)
 
-blocks = extractor.extract_page_blocks(1)
+artifact = PDFArtifactBuilder(config).build(
+    "document.pdf",
+    "artifacts/document",
+)
 
-for block in blocks:
-    print(block["text"])
+print(artifact.statistics)
 ```
 
----
-
-## Extract Plain Page Text
+A convenience function is also available:
 
 ```python
-text = extractor.extract_page_text(1)
-print(text)
+from akilan import build_artifact
+
+artifact = build_artifact("document.pdf", "artifacts/document")
 ```
 
----
+## CLI
 
-## Example Output
-
-```python
-[
-  {
-    "block_index": 0,
-    "page_number": 1,
-    "bbox": {"x0": 72.0, "y0": 54.1, "x1": 410.3, "y1": 88.7},
-    "text": "Introduction to PDF Extraction"
-  },
-  {
-    "block_index": 1,
-    "page_number": 1,
-    "bbox": {"x0": 72.0, "y0": 102.0, "x1": 500.1, "y1": 180.2},
-    "text": "This document explains how text can be extracted from structured PDFs."
-  }
-]
+```bash
+akilan extract document.pdf \
+  --output artifacts/document \
+  --render-pages \
+  --overwrite
 ```
 
----
+## Artifact layout
 
-## How It Works
-
-```
-PDF Document
-      ↓
-PyMuPDF Parser
-      ↓
-AKILAN Extraction Layer
-      ↓
-Structured Blocks / Page Text
-      ↓
-AI Pipelines / RAG / Analytics
-```
-
----
-
-## Use Cases
-
-AKILAN works well for:
-
-* AI document ingestion pipelines
-* Retrieval-Augmented Generation (RAG)
-* PDF preprocessing for LLMs
-* Document analytics
-* Structured content extraction
-
----
-
-## Project Structure
-
-```
-akilan
-├── src/akilan
-│   ├── text_extraction.py
-│   └── logger.py
+```text
+artifacts/document/
+├── manifest.json
+├── document.json
+├── document.md
+├── document.txt
+├── pages/
+│   ├── page_0001.json
+│   ├── page_0001.md
+│   └── ...
+└── assets/
+    ├── images/
+    │   └── ...
+    └── renders/
+        └── page_0001.png
 ```
 
----
+### `manifest.json`
 
-## License
+A compact index containing source identity, schema version, extraction engine, aggregate metrics, and paths to every generated artifact.
 
-MIT License
+### `document.json`
 
----
+The complete machine-readable document graph. Every major element has a stable page-scoped ID, a bounding box, and native properties. Reading-order entries reference these IDs rather than duplicating content.
 
-## Author
+### Page JSON
 
-Akilan
+Each page retains:
+
+- text block → line → span hierarchy;
+- optional character-level geometry;
+- table cell geometry and extracted rows;
+- image occurrences and reusable extracted assets;
+- vector drawings;
+- links, annotations, and form fields;
+- deterministic semantic roles;
+- interleaved geometry-aware reading order.
+
+## Semantic inference
+
+AKILAN does not claim model-generated semantic understanding. It derives reproducible structural semantics from measurable PDF evidence:
+
+1. typography relative to the page body-font distribution;
+2. location in header/footer margins;
+3. repeated margin content across pages;
+4. list and page-number patterns;
+5. monospaced-font detection;
+6. table overlap suppression;
+7. column boundaries and spanning regions.
+
+Each text block includes `semantic_role` and `semantic_confidence`, making heuristic decisions explicit and auditable.
+
+## Design principles
+
+- **Evidence first:** never discard geometry merely to produce cleaner prose.
+- **Deterministic:** the same PDF and configuration produce the same schema and ordering.
+- **AI friendly:** JSON is normalized; Markdown and plain text are projections, not the source of truth.
+- **PyMuPDF native:** use the engine's document, page, text, table, image, drawing, link, annotation, and widget APIs directly.
+- **Inspectable:** page renders and stable IDs make extraction decisions debuggable.
+- **Extensible:** future semantic passes should add relationships without mutating source evidence.
+
+## Development
+
+```bash
+python -m pytest
+ruff check .
+python -m build
+```
+
+## License note
+
+AKILAN's source is currently MIT licensed. PyMuPDF is a separately licensed dependency offered under AGPL and commercial terms. Review the PyMuPDF licensing requirements before embedding this library in proprietary or network-accessible software.
