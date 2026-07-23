@@ -79,3 +79,35 @@ def test_batch_release_fails_closed_when_owner_evidence_changes(tmp_path: Path) 
 
     assert owner_path.exists()
     assert inspect_output_build_lease(destination).status == "valid"
+
+
+def test_batch_release_continues_after_one_destination_ownership_changes(tmp_path: Path) -> None:
+    destinations = {
+        "first": tmp_path / "artifact-a",
+        "second": tmp_path / "artifact-b",
+        "third": tmp_path / "artifact-c",
+    }
+    batch = OutputBuildLeaseBatch(destinations).acquire()
+    changed_owner_path = batch.leases["second"].path / "owner.json"
+    changed_owner = json.loads(changed_owner_path.read_text(encoding="utf-8"))
+    changed_owner["hostname"] = "changed-host"
+    changed_owner_path.write_text(
+        json.dumps(changed_owner, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(OutputLeaseError, match="second:OutputLeaseError"):
+        batch.release()
+
+    assert not batch.acquired
+    assert inspect_output_build_lease(destinations["first"]).status == "absent"
+    assert inspect_output_build_lease(destinations["second"]).status == "valid"
+    assert inspect_output_build_lease(destinations["third"]).status == "absent"
+
+    changed_owner_path.write_text(
+        json.dumps(batch.leases["second"].owner.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    batch.release()
+
+    assert inspect_output_build_lease(destinations["second"]).status == "absent"

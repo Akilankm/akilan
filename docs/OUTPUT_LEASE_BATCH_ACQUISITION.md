@@ -23,7 +23,7 @@ The batch boundary:
 - acquires destinations in deterministic identifier order;
 - uses each destination's atomic lease-directory creation as the arbitration operation;
 - rolls back leases acquired by the current batch when a later acquisition loses a race;
-- releases owned leases in reverse acquisition order;
+- releases independently verified leases in reverse acquisition order;
 - never removes, repairs, or declares foreign lease evidence stale;
 - preserves changed owner evidence and fails closed when release ownership cannot be proven.
 
@@ -33,7 +33,9 @@ A successful read-only batch preflight is not a reservation. Use `OutputBuildLea
 
 If a competing writer claims a later destination after construction but before acquisition completes, the batch releases every earlier lease it acquired and propagates the acquisition failure. The competing writer's lease remains untouched.
 
-If rollback cannot prove ownership of an acquired lease, rollback stops and raises `OutputLeaseError`. The remaining lease evidence is intentionally retained for investigation rather than deleted speculatively.
+If rollback or release cannot prove ownership of one acquired lease, that lease evidence is retained for investigation. Cleanup continues for every other independently verified lease, so a disputed destination does not leave unrelated outputs locked. The operation raises `OutputLeaseError` containing every release failure after all safe cleanup attempts complete.
+
+A later `release()` call retries only the leases whose ownership could not previously be proven. This allows an operator to restore verified owner evidence and complete cleanup without reacquiring or disturbing destinations already released successfully.
 
 ## Operational boundary
 
