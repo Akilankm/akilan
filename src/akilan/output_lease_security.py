@@ -23,9 +23,9 @@ class OutputLeasePermissionInspection:
 
     @property
     def secure(self) -> bool:
-        """Return whether the permission boundary is acceptable."""
+        """Return whether the permission boundary was verified as acceptable."""
 
-        return not self.violations and self.status in {"absent", "secure", "unsupported"}
+        return not self.violations and self.status in {"absent", "secure"}
 
     def to_dict(self) -> dict[str, object]:
         """Serialize deterministic machine-readable evidence."""
@@ -78,7 +78,7 @@ def inspect_output_build_lease_permissions(
             status="unsupported",
             lease_mode=None,
             owner_mode=None,
-            violations=(),
+            violations=("posix_permission_audit_is_unsupported",),
         )
 
     lease_path = Path(structural.lease_path)
