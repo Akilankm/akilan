@@ -112,7 +112,7 @@ class OutputBuildLease:
         except BaseException as acquisition_error:
             try:
                 _rollback_owner_publication(self.path, self.owner)
-            except Exception as rollback_error:
+            except Exception:
                 raise OutputLeaseError(
                     "Artifact output lease owner publication failed and rollback "
                     f"could not prove safe cleanup: {self.path}"
