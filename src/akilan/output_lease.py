@@ -279,6 +279,19 @@ def _write_owner(lock_path: Path, owner: OutputLeaseOwner) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(staging_path, lock_path / "owner.json")
+    _sync_directory(lock_path)
+
+
+def _sync_directory(path: Path) -> None:
+    """Synchronize a directory entry on POSIX filesystems when supported."""
+
+    if os.name != "posix":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> None:
