@@ -15,6 +15,19 @@ from .output_lease import (
 )
 
 
+class OutputLeaseBatchContextError(OutputLeaseError):
+    """Preserve both a protected-block failure and a lease cleanup failure."""
+
+    def __init__(self, body_error: BaseException, release_error: OutputLeaseError):
+        self.body_error = body_error
+        self.release_error = release_error
+        super().__init__(
+            "Output lease batch protected operation failed and lease cleanup was "
+            f"incomplete: body={type(body_error).__name__}:{body_error}; "
+            f"cleanup={type(release_error).__name__}:{release_error}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class OutputLeaseBatchEntry:
     """Lease inspection evidence bound to one caller-defined identifier."""
@@ -153,7 +166,12 @@ class OutputBuildLeaseBatch:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.release()
+        try:
+            self.release()
+        except OutputLeaseError as release_error:
+            if exc_value is None:
+                raise
+            raise OutputLeaseBatchContextError(exc_value, release_error) from exc_value
 
 
 def assess_output_lease_batch_preflight(
