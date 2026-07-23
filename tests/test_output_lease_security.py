@@ -19,6 +19,22 @@ def test_permission_inspection_reports_absent_lease(tmp_path: Path) -> None:
     assert inspection.violations == ()
 
 
+def test_permission_inspection_fails_closed_when_platform_is_unsupported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "artifact"
+
+    with OutputBuildLease(destination):
+        monkeypatch.setattr("akilan.output_lease_security.os.name", "nt")
+        inspection = inspect_output_build_lease_permissions(destination)
+
+        assert inspection.status == "unsupported"
+        assert not inspection.secure
+        assert inspection.lease_mode is None
+        assert inspection.owner_mode is None
+        assert inspection.violations == ("posix_permission_audit_is_unsupported",)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX mode bits are required")
 def test_permission_inspection_reports_secure_lease_without_mutation(tmp_path: Path) -> None:
     destination = tmp_path / "artifact"
