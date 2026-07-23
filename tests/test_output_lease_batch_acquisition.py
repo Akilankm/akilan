@@ -55,6 +55,42 @@ def test_batch_rolls_back_earlier_leases_when_later_acquisition_loses_race(
     assert inspect_output_build_lease(second).status == "absent"
 
 
+@pytest.mark.parametrize(
+    "interrupt",
+    [KeyboardInterrupt("operator interrupt"), SystemExit(130)],
+    ids=["keyboard-interrupt", "system-exit"],
+)
+def test_batch_rolls_back_partial_acquisition_for_process_interrupts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: BaseException,
+) -> None:
+    destinations = {
+        "first": tmp_path / "artifact-a",
+        "second": tmp_path / "artifact-b",
+    }
+    batch = OutputBuildLeaseBatch(destinations)
+    second_lease = batch.leases["second"]
+    original_acquire = OutputBuildLease.acquire
+
+    def interrupt_second(lease: OutputBuildLease) -> OutputBuildLease:
+        if lease is second_lease:
+            raise interrupt
+        return original_acquire(lease)
+
+    monkeypatch.setattr(OutputBuildLease, "acquire", interrupt_second)
+
+    with pytest.raises(type(interrupt)) as raised:
+        batch.acquire()
+
+    assert raised.value is interrupt
+    assert not batch.acquired
+    assert all(
+        inspect_output_build_lease(destination).status == "absent"
+        for destination in destinations.values()
+    )
+
+
 def test_batch_rejects_invalid_destination_set_without_side_effects(tmp_path: Path) -> None:
     destination = tmp_path / "artifact"
 
