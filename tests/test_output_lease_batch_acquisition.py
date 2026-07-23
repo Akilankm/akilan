@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from akilan.output_lease import OutputBuildLease, OutputLeaseError, inspect_output_build_lease
-from akilan.output_lease_batch import OutputBuildLeaseBatch
+from akilan.output_lease_batch import (
+    OutputBuildLeaseBatch,
+    OutputLeaseBatchContextError,
+)
 
 
 def test_batch_acquires_and_releases_exact_destination_set(tmp_path: Path) -> None:
@@ -111,3 +114,47 @@ def test_batch_release_continues_after_one_destination_ownership_changes(tmp_pat
     batch.release()
 
     assert inspect_output_build_lease(destinations["second"]).status == "absent"
+
+
+def test_context_manager_preserves_body_and_cleanup_failures(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact"
+    batch = OutputBuildLeaseBatch({"artifact": destination})
+
+    with pytest.raises(OutputLeaseBatchContextError) as raised:
+        with batch:
+            owner_path = batch.leases["artifact"].path / "owner.json"
+            owner = json.loads(owner_path.read_text(encoding="utf-8"))
+            owner["hostname"] = "changed-host"
+            owner_path.write_text(
+                json.dumps(owner, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            raise RuntimeError("build failed")
+
+    error = raised.value
+    assert isinstance(error.body_error, RuntimeError)
+    assert str(error.body_error) == "build failed"
+    assert isinstance(error.release_error, OutputLeaseError)
+    assert "release was incomplete" in str(error.release_error)
+    assert error.__cause__ is error.body_error
+    assert inspect_output_build_lease(destination).status == "valid"
+
+
+def test_context_manager_keeps_cleanup_failure_behavior_without_body_error(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "artifact"
+    batch = OutputBuildLeaseBatch({"artifact": destination})
+
+    with pytest.raises(OutputLeaseError, match="release was incomplete") as raised:
+        with batch:
+            owner_path = batch.leases["artifact"].path / "owner.json"
+            owner = json.loads(owner_path.read_text(encoding="utf-8"))
+            owner["hostname"] = "changed-host"
+            owner_path.write_text(
+                json.dumps(owner, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+    assert not isinstance(raised.value, OutputLeaseBatchContextError)
+    assert inspect_output_build_lease(destination).status == "valid"
