@@ -37,6 +37,8 @@ If rollback or release cannot prove ownership of one acquired lease, that lease 
 
 A later `release()` call retries only the leases whose ownership could not previously be proven. This allows an operator to restore verified owner evidence and complete cleanup without reacquiring or disturbing destinations already released successfully.
 
+When the protected `with` block fails and lease cleanup also fails, AKILAN raises `OutputLeaseBatchContextError`. Its `body_error` and `release_error` attributes preserve both failures, and the original protected-block failure remains the exception cause. This prevents cleanup failure from silently replacing the root build or publication failure. If only cleanup fails, the existing `OutputLeaseError` behavior is unchanged.
+
 ## Operational boundary
 
 The lease coordinates writers that use the same filesystem namespace and AKILAN lease convention. It does not provide a distributed consensus protocol, stale-owner detection, or transactional rollback of artifacts already written outside the lease-protected block.
