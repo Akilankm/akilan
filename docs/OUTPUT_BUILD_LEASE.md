@@ -37,6 +37,10 @@ Owner evidence is first written to a token-specific staging file, flushed, and s
 
 The complete owner evidence object is checked again during release. AKILAN refuses to remove a lease when any protected field—including token, process ID, hostname, acquisition time, or destination—changed while the build was running.
 
+After verified release removes `owner.json` and the lease directory, AKILAN synchronizes the lease directory's parent on POSIX systems. This makes removal durable across a process or host failure instead of relying only on the in-memory directory state. If the parent synchronization fails, the lease is already physically absent and the in-process lease state is cleared, but AKILAN raises `OutputLeaseError` because crash durability could not be confirmed. Calling `release()` again is safe and becomes a no-op.
+
+Interrupted owner-publication rollback applies the same parent-directory synchronization after removing the incomplete lease directory. A rollback synchronization failure therefore fails closed rather than reporting a fully durable cleanup.
+
 ## Failure behavior
 
 The lease is released when the protected build scope exits, including extraction and publication failures. Existing atomic-output guarantees remain unchanged: failed builds do not replace the last known-good artifact.
