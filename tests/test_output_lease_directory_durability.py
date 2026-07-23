@@ -32,16 +32,24 @@ def test_output_lease_rolls_back_when_directory_sync_fails(
 ) -> None:
     destination = tmp_path / "artifact"
     lease = OutputBuildLease(destination)
+    synchronized: list[Path] = []
 
-    def fail_directory_sync(path: Path) -> None:
-        assert path == lease.path
-        assert (path / "owner.json").is_file()
-        raise OSError("simulated directory durability failure")
+    def fail_publication_directory_sync(path: Path) -> None:
+        synchronized.append(path)
+        if path == lease.path:
+            assert (path / "owner.json").is_file()
+            raise OSError("simulated directory durability failure")
+        assert path == lease.path.parent
 
-    monkeypatch.setattr(output_lease, "_sync_directory", fail_directory_sync)
+    monkeypatch.setattr(
+        output_lease,
+        "_sync_directory",
+        fail_publication_directory_sync,
+    )
 
     with pytest.raises(OSError, match="simulated directory durability failure"):
         lease.acquire()
 
+    assert synchronized == [lease.path, lease.path.parent]
     assert not lease.path.exists()
     assert inspect_output_build_lease(destination).status == "absent"

@@ -143,11 +143,52 @@ def test_output_lease_rolls_back_when_owner_fsync_fails(
 
     monkeypatch.setattr("akilan.output_lease.os.fsync", fail_fsync)
 
-    with pytest.raises(OSError, match="simulated durability failure"):
+    with pytest.raises(OutputLeaseError, match="rollback could not prove safe cleanup") as raised:
         lease.acquire()
 
+    assert isinstance(raised.value.__cause__, OSError)
+    assert str(raised.value.__cause__) == "simulated durability failure"
     assert not lease.path.exists()
     assert inspect_output_build_lease(destination).status == "absent"
+
+
+def test_output_lease_release_synchronizes_parent_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination).acquire()
+    synchronized: list[Path] = []
+
+    monkeypatch.setattr(
+        "akilan.output_lease._sync_directory",
+        lambda path: synchronized.append(path),
+    )
+
+    lease.release()
+
+    assert synchronized == [lease.path.parent]
+    assert not lease.path.exists()
+
+
+def test_output_lease_release_reports_parent_sync_failure_after_safe_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "artifact"
+    lease = OutputBuildLease(destination).acquire()
+
+    def fail_sync(path: Path) -> None:
+        assert path == lease.path.parent
+        raise OSError("simulated parent durability failure")
+
+    monkeypatch.setattr("akilan.output_lease._sync_directory", fail_sync)
+
+    with pytest.raises(OutputLeaseError, match="parent directory could not be synchronized") as raised:
+        lease.release()
+
+    assert isinstance(raised.value.__cause__, OSError)
+    assert not lease.path.exists()
+    assert inspect_output_build_lease(destination).status == "absent"
+    lease.release()
 
 
 def test_builder_fails_before_staging_when_destination_is_leased(tmp_path: Path) -> None:

@@ -145,6 +145,13 @@ class OutputBuildLease:
         (self.path / "owner.json").unlink()
         self.path.rmdir()
         self._acquired = False
+        try:
+            _sync_directory(self.path.parent)
+        except OSError as error:
+            raise OutputLeaseError(
+                "Artifact output lease was removed but its parent directory could not be "
+                f"synchronized: {self.path.parent}"
+            ) from error
 
     def __enter__(self) -> OutputBuildLease:
         return self.acquire()
@@ -311,6 +318,7 @@ def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> Non
         owner_path.unlink()
 
     lock_path.rmdir()
+    _sync_directory(lock_path.parent)
 
 
 def _read_owner(lock_path: Path) -> dict[str, object] | None:
