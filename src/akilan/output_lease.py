@@ -26,6 +26,19 @@ class OutputLeaseError(RuntimeError):
     """Raised when an artifact destination is already leased by another build."""
 
 
+class OutputLeaseContextError(OutputLeaseError):
+    """Preserve both a protected-operation failure and a lease cleanup failure."""
+
+    def __init__(self, body_error: BaseException, release_error: OutputLeaseError):
+        self.body_error = body_error
+        self.release_error = release_error
+        super().__init__(
+            "Output lease protected operation failed and lease cleanup was incomplete: "
+            f"body={type(body_error).__name__}:{body_error}; "
+            f"cleanup={type(release_error).__name__}:{release_error}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class OutputLeaseOwner:
     """Diagnostic identity persisted inside an acquired output lease."""
@@ -142,7 +155,12 @@ class OutputBuildLease:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.release()
+        try:
+            self.release()
+        except OutputLeaseError as release_error:
+            if exc_value is None:
+                raise
+            raise OutputLeaseContextError(exc_value, release_error) from exc_value
 
 
 def inspect_output_build_lease(destination: str | Path) -> OutputLeaseInspection:
