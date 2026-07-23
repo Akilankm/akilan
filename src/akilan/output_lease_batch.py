@@ -1,12 +1,18 @@
-"""Deterministic read-only preflight for multiple artifact output leases."""
+"""Deterministic preflight and all-or-nothing acquisition for output leases."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 
-from .output_lease import OutputLeaseInspection, inspect_output_build_lease
+from .output_lease import (
+    OutputBuildLease,
+    OutputLeaseError,
+    OutputLeaseInspection,
+    inspect_output_build_lease,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +58,102 @@ class OutputLeaseBatchPreflight:
             "entries": [entry.to_dict() for entry in self.entries],
             "violations": list(self.violations),
         }
+
+
+class OutputBuildLeaseBatch:
+    """Acquire an exact destination set or retain none of its leases.
+
+    Destinations are normalized and acquired in deterministic identifier order.
+    If acquisition fails, leases acquired by this instance are released in reverse
+    order. Existing or malformed foreign lease evidence is never modified.
+    """
+
+    def __init__(self, destinations: Mapping[str, str | Path]):
+        preflight = assess_output_lease_batch_preflight(destinations)
+        if not preflight.ready:
+            raise OutputLeaseError(
+                "Output lease batch is not acquirable: "
+                f"status={preflight.status}; violations={list(preflight.violations)}; "
+                f"blocked_count={preflight.blocked_count}"
+            )
+        self._leases = tuple(
+            (
+                entry.identifier,
+                OutputBuildLease(entry.inspection.destination),
+            )
+            for entry in preflight.entries
+        )
+        self._acquired_count = 0
+
+    @property
+    def acquired(self) -> bool:
+        """Return whether this instance currently owns every requested lease."""
+
+        return bool(self._leases) and self._acquired_count == len(self._leases)
+
+    @property
+    def identifiers(self) -> tuple[str, ...]:
+        """Return deterministic caller-defined identifiers."""
+
+        return tuple(identifier for identifier, _ in self._leases)
+
+    @property
+    def leases(self) -> Mapping[str, OutputBuildLease]:
+        """Return a snapshot of acquired lease objects by identifier."""
+
+        return dict(self._leases)
+
+    def acquire(self) -> OutputBuildLeaseBatch:
+        """Acquire every lease, rolling back this instance on partial failure."""
+
+        if self._acquired_count:
+            raise OutputLeaseError("Output lease batch has already started acquisition")
+
+        try:
+            for _, lease in self._leases:
+                lease.acquire()
+                self._acquired_count += 1
+        except Exception as acquisition_error:
+            rollback_errors = self._release_acquired()
+            if rollback_errors:
+                detail = "; ".join(rollback_errors)
+                raise OutputLeaseError(
+                    "Output lease batch acquisition failed and rollback was incomplete: "
+                    f"{detail}"
+                ) from acquisition_error
+            raise
+        return self
+
+    def release(self) -> None:
+        """Release every lease owned by this instance in reverse order."""
+
+        rollback_errors = self._release_acquired()
+        if rollback_errors:
+            detail = "; ".join(rollback_errors)
+            raise OutputLeaseError(f"Output lease batch release was incomplete: {detail}")
+
+    def _release_acquired(self) -> list[str]:
+        errors: list[str] = []
+        while self._acquired_count:
+            identifier, lease = self._leases[self._acquired_count - 1]
+            try:
+                lease.release()
+            except Exception as error:  # preserve remaining ownership evidence
+                errors.append(f"{identifier}:{type(error).__name__}:{error}")
+                break
+            self._acquired_count -= 1
+        return errors
+
+    def __enter__(self) -> OutputBuildLeaseBatch:
+        return self.acquire()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.release()
 
 
 def assess_output_lease_batch_preflight(
