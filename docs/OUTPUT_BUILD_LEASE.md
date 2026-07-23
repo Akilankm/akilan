@@ -31,7 +31,7 @@ Directory creation is the atomic arbitration operation. A second writer targetin
 - UTC acquisition time;
 - absolute resolved destination.
 
-The owner token is checked again during release. AKILAN refuses to remove a lease whose ownership evidence changed while the build was running.
+The complete owner evidence object is checked again during release. AKILAN refuses to remove a lease when any protected field—including token, process ID, hostname, acquisition time, or destination—changed while the build was running.
 
 ## Failure behavior
 

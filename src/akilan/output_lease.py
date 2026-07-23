@@ -109,7 +109,7 @@ class OutputBuildLease:
         if not self._acquired:
             return
         owner = _read_owner(self.path)
-        if owner is None or owner.get("token") != self.owner.token:
+        if owner != self.owner.to_dict():
             raise OutputLeaseError(
                 f"Refusing to release artifact output lease because ownership changed: {self.path}"
             )
