@@ -109,7 +109,7 @@ class OutputBuildLease:
 
         try:
             _write_owner(self.path, self.owner)
-        except Exception:
+        except BaseException:
             self.path.rmdir()
             raise
         self._acquired = True
