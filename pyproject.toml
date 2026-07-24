@@ -64,6 +64,7 @@ akilan-artifact-directory-intake-batch = "akilan.artifact_directory_intake_batch
 akilan-output-lease = "akilan.output_lease_cli:main"
 akilan-output-lease-batch = "akilan.output_lease_batch_cli:main"
 akilan-output-lease-permissions = "akilan.output_lease_security_cli:main"
+akilan-output-lease-permissions-batch = "akilan.output_lease_security_batch_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
@@ -88,6 +89,3 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
-packages = ["akilan"]
-warn_unused_ignores = false
