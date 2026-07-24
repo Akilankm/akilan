@@ -123,6 +123,25 @@ def test_load_corpus_sources_rejects_unsafe_filename(tmp_path: Path) -> None:
         load_corpus_sources(manifest)
 
 
+def test_load_corpus_sources_rejects_oversized_manifest_without_mutation(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.json"
+    payload = b"{" + (b" " * (1024 * 1024)) + b"}"
+    manifest.write_bytes(payload)
+
+    with pytest.raises(CorpusSourceError, match="exceeds 1048576 bytes"):
+        load_corpus_sources(manifest)
+
+    assert manifest.read_bytes() == payload
+
+
+def test_load_corpus_sources_reports_invalid_utf8(tmp_path: Path) -> None:
+    manifest = tmp_path / "sources.json"
+    manifest.write_bytes(b"\xff")
+
+    with pytest.raises(CorpusSourceError, match="Unable to read corpus manifest"):
+        load_corpus_sources(manifest)
+
+
 def test_verify_corpus_reports_valid_file_without_network(tmp_path: Path) -> None:
     payload = _pdf_bytes()
     digest = hashlib.sha256(payload).hexdigest()
