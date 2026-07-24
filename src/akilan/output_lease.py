@@ -232,8 +232,14 @@ def _lease_entry_violations(lock_path: Path) -> list[str]:
     if len(entries) != 1 or entries[0].name != "owner.json":
         return ["lease_directory_must_contain_only_owner_json"]
     owner_path = entries[0]
-    if owner_path.is_symlink() or not owner_path.is_file():
+    try:
+        owner_stat = owner_path.stat(follow_symlinks=False)
+    except OSError:
         return ["owner_json_must_be_a_regular_file"]
+    if not stat.S_ISREG(owner_stat.st_mode):
+        return ["owner_json_must_be_a_regular_file"]
+    if owner_stat.st_nlink != 1:
+        return ["owner_json_must_have_single_link"]
     return []
 
 
@@ -342,7 +348,8 @@ def _read_owner(lock_path: Path) -> dict[str, object] | None:
         flags |= getattr(os, "O_NONBLOCK", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(owner_path, flags)
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        owner_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(owner_stat.st_mode) or owner_stat.st_nlink != 1:
             return None
         raw_payload = _read_bounded_descriptor(descriptor, _MAX_OWNER_EVIDENCE_BYTES)
         if raw_payload is None:
