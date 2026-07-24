@@ -39,7 +39,10 @@ def test_permission_audit_stays_anchored_when_lease_path_is_replaced(
             replaced = True
         return original_open(path, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr("akilan.output_lease_security.os.open", replace_before_owner_open)
+    monkeypatch.setattr(
+        "akilan.output_lease_security._OPEN",
+        replace_before_owner_open,
+    )
 
     inspection = inspect_output_build_lease_permissions(destination)
 
