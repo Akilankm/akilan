@@ -12,7 +12,6 @@ from urllib.request import Request, urlopen
 
 import fitz
 
-
 _MAX_CORPUS_MANIFEST_BYTES = 1024 * 1024
 
 
