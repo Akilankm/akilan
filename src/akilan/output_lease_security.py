@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .output_lease import inspect_output_build_lease
 
+_OPEN = os.open
+
 
 @dataclass(frozen=True, slots=True)
 class OutputLeasePermissionInspection:
@@ -46,10 +48,12 @@ def inspect_output_build_lease_permissions(
 ) -> OutputLeasePermissionInspection:
     """Inspect lease permissions without mutating or recovering the lease.
 
-    On POSIX systems, group/world write access is rejected for both the lease
-    directory and ``owner.json``. On non-POSIX platforms, the structural lease
-    inspection remains authoritative and permission auditing reports
-    ``unsupported`` rather than guessing at ACL semantics.
+    On supported POSIX systems, group/world write access is rejected for both
+    the lease directory and ``owner.json``. Descriptor-relative lookup anchors
+    owner metadata to the opened lease directory so a concurrent path
+    replacement cannot redirect the audit to unrelated evidence. On platforms
+    without these descriptor semantics, auditing reports ``unsupported`` rather
+    than guessing at ACL or path-race behavior.
     """
 
     structural = inspect_output_build_lease(destination)
@@ -82,11 +86,19 @@ def inspect_output_build_lease_permissions(
         )
 
     lease_path = Path(structural.lease_path)
-    owner_path = lease_path / "owner.json"
     try:
-        lease_stat = lease_path.stat(follow_symlinks=False)
-        owner_stat = owner_path.stat(follow_symlinks=False)
+        lease_stat, owner_stat = _read_permission_metadata(lease_path)
     except OSError:
+        return OutputLeasePermissionInspection(
+            destination=structural.destination,
+            lease_path=structural.lease_path,
+            status="unreadable_permissions",
+            lease_mode=None,
+            owner_mode=None,
+            violations=("permission_metadata_must_be_readable",),
+        )
+
+    if not stat.S_ISDIR(lease_stat.st_mode) or not stat.S_ISREG(owner_stat.st_mode):
         return OutputLeasePermissionInspection(
             destination=structural.destination,
             lease_path=structural.lease_path,
@@ -114,7 +126,28 @@ def inspect_output_build_lease_permissions(
     )
 
 
-def _supports_posix_permission_audit() -> bool:
-    """Return whether POSIX mode-bit interpretation is supported."""
+def _read_permission_metadata(lock_path: Path) -> tuple[os.stat_result, os.stat_result]:
+    """Read lease and owner metadata from one anchored directory descriptor."""
 
-    return os.name == "posix"
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    owner_flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+    directory_descriptor = _OPEN(lock_path, directory_flags)
+    owner_descriptor: int | None = None
+    try:
+        owner_descriptor = _OPEN("owner.json", owner_flags, dir_fd=directory_descriptor)
+        return os.fstat(directory_descriptor), os.fstat(owner_descriptor)
+    finally:
+        if owner_descriptor is not None:
+            os.close(owner_descriptor)
+        os.close(directory_descriptor)
+
+
+def _supports_posix_permission_audit() -> bool:
+    """Return whether anchored POSIX mode-bit inspection is supported."""
+
+    return (
+        os.name == "posix"
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+    )
