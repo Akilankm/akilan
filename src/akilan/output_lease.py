@@ -121,6 +121,7 @@ class OutputBuildLease:
             ) from error
 
         try:
+            _set_posix_mode(self.path, 0o700)
             _write_owner(self.path, self.owner)
         except BaseException as acquisition_error:
             try:
@@ -278,9 +279,18 @@ def _owner_staging_path(lock_path: Path, owner: OutputLeaseOwner) -> Path:
     return lock_path / f".owner-{owner.token}.tmp"
 
 
+def _set_posix_mode(path: Path, mode: int) -> None:
+    """Apply an exact restrictive mode where POSIX mode bits are meaningful."""
+
+    if os.name == "posix":
+        path.chmod(mode)
+
+
 def _write_owner(lock_path: Path, owner: OutputLeaseOwner) -> None:
     payload = json.dumps(owner.to_dict(), indent=2, sort_keys=True) + "\n"
     staging_path = _owner_staging_path(lock_path, owner)
+    staging_path.touch(mode=0o600, exist_ok=False)
+    _set_posix_mode(staging_path, 0o600)
     with staging_path.open("w", encoding="utf-8") as stream:
         stream.write(payload)
         stream.flush()
