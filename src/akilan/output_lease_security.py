@@ -10,6 +10,9 @@ from pathlib import Path
 from .output_lease import inspect_output_build_lease
 
 
+_OPEN = os.open
+
+
 @dataclass(frozen=True, slots=True)
 class OutputLeasePermissionInspection:
     """POSIX permission evidence for one artifact output lease."""
@@ -129,10 +132,10 @@ def _read_permission_metadata(lock_path: Path) -> tuple[os.stat_result, os.stat_
 
     directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     owner_flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
-    directory_descriptor = os.open(lock_path, directory_flags)
+    directory_descriptor = _OPEN(lock_path, directory_flags)
     owner_descriptor: int | None = None
     try:
-        owner_descriptor = os.open("owner.json", owner_flags, dir_fd=directory_descriptor)
+        owner_descriptor = _OPEN("owner.json", owner_flags, dir_fd=directory_descriptor)
         return os.fstat(directory_descriptor), os.fstat(owner_descriptor)
     finally:
         if owner_descriptor is not None:
