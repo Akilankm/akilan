@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-import stat
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_IMODE, S_ISDIR, S_ISREG, S_IWGRP, S_IWOTH
 
 from .output_lease import inspect_output_build_lease
 
@@ -99,7 +99,7 @@ def inspect_output_build_lease_permissions(
             violations=("permission_metadata_must_be_readable",),
         )
 
-    if not stat.S_ISDIR(lease_stat.st_mode) or not stat.S_ISREG(owner_stat.st_mode):
+    if not S_ISDIR(lease_stat.st_mode) or not S_ISREG(owner_stat.st_mode):
         return OutputLeasePermissionInspection(
             destination=structural.destination,
             lease_path=structural.lease_path,
@@ -109,12 +109,12 @@ def inspect_output_build_lease_permissions(
             violations=("permission_metadata_must_be_readable",),
         )
 
-    lease_mode_value = stat.S_IMODE(lease_stat.st_mode)
-    owner_mode_value = stat.S_IMODE(owner_stat.st_mode)
+    lease_mode_value = S_IMODE(lease_stat.st_mode)
+    owner_mode_value = S_IMODE(owner_stat.st_mode)
     violations: list[str] = []
-    if lease_mode_value & (stat.S_IWGRP | stat.S_IWOTH):
+    if lease_mode_value & (S_IWGRP | S_IWOTH):
         violations.append("lease_directory_must_not_be_group_or_world_writable")
-    if owner_mode_value & (stat.S_IWGRP | stat.S_IWOTH):
+    if owner_mode_value & (S_IWGRP | S_IWOTH):
         violations.append("owner_json_must_not_be_group_or_world_writable")
 
     return OutputLeasePermissionInspection(
