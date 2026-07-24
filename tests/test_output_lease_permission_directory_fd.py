@@ -6,7 +6,7 @@ from akilan.output_lease import OutputBuildLease
 from akilan.output_lease_security import inspect_output_build_lease_permissions
 
 
-pytestmark = pytest.mark.skipif(
+@pytest.mark.skipif(
     not (
         os.name == "posix"
         and hasattr(os, "O_DIRECTORY")
@@ -15,8 +15,6 @@ pytestmark = pytest.mark.skipif(
     ),
     reason="requires descriptor-relative POSIX filesystem semantics",
 )
-
-
 def test_permission_audit_stays_anchored_when_lease_path_is_replaced(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
