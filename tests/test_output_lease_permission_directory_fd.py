@@ -36,13 +36,7 @@ def test_permission_audit_stays_anchored_when_lease_path_is_replaced(
     original_open = os.open
     replaced = False
 
-    def replace_before_owner_open(
-        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
-        flags: int,
-        mode: int = 0o777,
-        *,
-        dir_fd: int | None = None,
-    ) -> int:
+    def replace_before_owner_open(path, flags, mode=0o777, *, dir_fd=None):
         nonlocal replaced
         if path == "owner.json" and dir_fd is not None and not replaced:
             lease.path.rename(displaced)
