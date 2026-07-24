@@ -63,6 +63,7 @@ akilan-artifact-directory-intake = "akilan.artifact_directory_intake_cli:main"
 akilan-artifact-directory-intake-batch = "akilan.artifact_directory_intake_batch_cli:main"
 akilan-output-lease = "akilan.output_lease_cli:main"
 akilan-output-lease-batch = "akilan.output_lease_batch_cli:main"
+akilan-output-lease-permissions = "akilan.output_lease_security_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Akilankm/akilan"
