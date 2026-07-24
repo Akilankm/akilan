@@ -11,6 +11,8 @@ On supported POSIX systems, the permission audit now:
 3. obtains both permission records with `fstat()`;
 4. closes both descriptors on every success or failure path.
 
+The lease directory descriptor is established before the owner lookup, so both mode records are tied to one opened directory object rather than two independently resolved paths.
+
 The `owner.json` lookup therefore remains attached to the directory that was actually opened. Replacing the visible lease path after that point cannot redirect the audit toward unrelated evidence.
 
 ## Fail-closed behavior
