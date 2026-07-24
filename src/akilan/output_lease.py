@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -334,12 +335,37 @@ def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> Non
 
 def _read_owner(lock_path: Path) -> dict[str, object] | None:
     owner_path = lock_path / "owner.json"
+    descriptor: int | None = None
     try:
-        with owner_path.open("rb") as stream:
-            raw_payload = stream.read(_MAX_OWNER_EVIDENCE_BYTES + 1)
-        if len(raw_payload) > _MAX_OWNER_EVIDENCE_BYTES:
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_BINARY", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(owner_path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        raw_payload = _read_bounded_descriptor(descriptor, _MAX_OWNER_EVIDENCE_BYTES)
+        if raw_payload is None:
             return None
         payload = json.loads(raw_payload.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     return payload if isinstance(payload, dict) else None
+
+
+def _read_bounded_descriptor(descriptor: int, limit: int) -> bytes | None:
+    """Read at most ``limit`` bytes plus one overflow sentinel from a descriptor."""
+
+    chunks: list[bytes] = []
+    remaining = limit + 1
+    while remaining:
+        chunk = os.read(descriptor, remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    payload = b"".join(chunks)
+    return payload if len(payload) <= limit else None
