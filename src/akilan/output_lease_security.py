@@ -9,7 +9,6 @@ from pathlib import Path
 
 from .output_lease import inspect_output_build_lease
 
-
 _OPEN = os.open
 
 
