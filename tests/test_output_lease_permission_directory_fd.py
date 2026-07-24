@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import pathlib
 import os
+from pathlib import Path
 
 import pytest
 
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_permission_audit_stays_anchored_when_lease_path_is_replaced(
-    tmp_path: pathlib.Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     destination = tmp_path / "artifact"
