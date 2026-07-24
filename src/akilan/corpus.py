@@ -13,6 +13,9 @@ from urllib.request import Request, urlopen
 import fitz
 
 
+_MAX_CORPUS_MANIFEST_BYTES = 1024 * 1024
+
+
 class CorpusSourceError(RuntimeError):
     """Raised when a corpus source cannot be acquired safely."""
 
@@ -61,11 +64,19 @@ class CorpusVerification:
 
 
 def load_corpus_sources(path: str | Path) -> tuple[CorpusSource, ...]:
-    """Load and strictly validate a JSON corpus-source manifest."""
+    """Load and strictly validate a bounded JSON corpus-source manifest."""
     manifest_path = Path(path)
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        with manifest_path.open("rb") as handle:
+            raw_manifest = handle.read(_MAX_CORPUS_MANIFEST_BYTES + 1)
+        if len(raw_manifest) > _MAX_CORPUS_MANIFEST_BYTES:
+            raise CorpusSourceError(
+                f"Corpus manifest {manifest_path} exceeds {_MAX_CORPUS_MANIFEST_BYTES} bytes"
+            )
+        payload = json.loads(raw_manifest.decode("utf-8"))
+    except CorpusSourceError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CorpusSourceError(f"Unable to read corpus manifest {manifest_path}: {exc}") from exc
 
     if not isinstance(payload, dict) or payload.get("version") != 1:
