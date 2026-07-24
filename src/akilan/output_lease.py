@@ -11,6 +11,7 @@ from pathlib import Path
 from types import TracebackType
 from uuid import RFC_4122, UUID, uuid4
 
+_MAX_OWNER_EVIDENCE_BYTES = 16 * 1024
 _OWNER_KEYS = frozenset(
     {
         "token",
@@ -332,8 +333,11 @@ def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> Non
 
 
 def _read_owner(lock_path: Path) -> dict[str, object] | None:
+    owner_path = lock_path / "owner.json"
     try:
-        payload = json.loads((lock_path / "owner.json").read_text(encoding="utf-8"))
+        if owner_path.stat().st_size > _MAX_OWNER_EVIDENCE_BYTES:
+            return None
+        payload = json.loads(owner_path.read_bytes().decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
