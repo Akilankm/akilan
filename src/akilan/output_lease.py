@@ -335,9 +335,11 @@ def _rollback_owner_publication(lock_path: Path, owner: OutputLeaseOwner) -> Non
 def _read_owner(lock_path: Path) -> dict[str, object] | None:
     owner_path = lock_path / "owner.json"
     try:
-        if owner_path.stat().st_size > _MAX_OWNER_EVIDENCE_BYTES:
+        with owner_path.open("rb") as stream:
+            raw_payload = stream.read(_MAX_OWNER_EVIDENCE_BYTES + 1)
+        if len(raw_payload) > _MAX_OWNER_EVIDENCE_BYTES:
             return None
-        payload = json.loads(owner_path.read_bytes().decode("utf-8"))
+        payload = json.loads(raw_payload.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
