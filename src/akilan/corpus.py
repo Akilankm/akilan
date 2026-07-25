@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -66,12 +67,7 @@ def load_corpus_sources(path: str | Path) -> tuple[CorpusSource, ...]:
     """Load and strictly validate a bounded JSON corpus-source manifest."""
     manifest_path = Path(path)
     try:
-        with manifest_path.open("rb") as handle:
-            raw_manifest = handle.read(_MAX_CORPUS_MANIFEST_BYTES + 1)
-        if len(raw_manifest) > _MAX_CORPUS_MANIFEST_BYTES:
-            raise CorpusSourceError(
-                f"Corpus manifest {manifest_path} exceeds {_MAX_CORPUS_MANIFEST_BYTES} bytes"
-            )
+        raw_manifest = _read_corpus_manifest(manifest_path)
         payload = json.loads(raw_manifest.decode("utf-8"))
     except CorpusSourceError:
         raise
@@ -194,6 +190,33 @@ def sync_corpus(
 
         results.append(_download_source(source, destination, timeout_seconds, max_bytes))
     return tuple(results)
+
+
+def _read_corpus_manifest(path: Path) -> bytes:
+    """Read manifest bytes from a bounded regular-file descriptor."""
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise CorpusSourceError(f"Corpus manifest {path} must be a regular file")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            raw_manifest = handle.read(_MAX_CORPUS_MANIFEST_BYTES + 1)
+    except CorpusSourceError:
+        raise
+    except OSError as exc:
+        raise CorpusSourceError(f"Unable to read corpus manifest {path}: {exc}") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+    if len(raw_manifest) > _MAX_CORPUS_MANIFEST_BYTES:
+        raise CorpusSourceError(f"Corpus manifest {path} exceeds {_MAX_CORPUS_MANIFEST_BYTES} bytes")
+    return raw_manifest
 
 
 def _download_source(source: CorpusSource, destination: Path, timeout_seconds: float, max_bytes: int) -> CorpusDownload:
